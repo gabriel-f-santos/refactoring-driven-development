@@ -9,19 +9,20 @@ You are mapping a legacy codebase as the **first step** of a Refactoring-Driven 
 
 ## Procedure
 
-### 1. Load configuration
+### 1. Load configuration and target decision
 
-Read `.rdd.yml` from the project root. If it does not exist:
+Read in order:
 
-- Look for `templates/.rdd.yml` in the plugin directory (typically `~/.claude/plugins/refactoring-driven-development/templates/`).
-- Copy it to the project root.
-- Open the file and ask the user to fill in the `legacy` and `target` blocks. **Do not proceed until the file is filled.**
+- `.rdd.yml` from the project root — for `legacy.*`, `target.*`, and `artifacts_dir`.
+- `{artifacts_dir}/TARGET.md` — the target architecture decision from `/rdd-target`.
 
-The configuration tells you:
-- `legacy.source` — where the legacy code lives
-- `legacy.stack` — what tech it uses (informs your file-reading patterns)
-- `target.source` — where new code will go (used by later skills, but record now)
-- `artifacts_dir` — where to write `MAP.md` and per-module artifacts (default `rdd/`)
+If either is missing, instruct the user to run `/rdd-target` first. **Do not proceed without `TARGET.md`** — module grouping and migration order depend on the target architecture pattern (a modular monolith and a microservices target produce different maps for the same legacy).
+
+Key fields you'll use:
+- `legacy.source` — where to scan
+- `legacy.stack` — informs file-reading patterns and entry-point heuristics
+- `TARGET.md` — read the **architecture pattern**, **cutover strategy**, and **module structure conventions**; these shape the MAP
+- `artifacts_dir` — where to write `MAP.md`
 
 ### 2. Inventory the legacy code
 
@@ -65,6 +66,13 @@ Build a dependency relationship list. Look for:
 - **Hubs** — modules many others depend on; migrate late or migrate carefully
 
 ### 5. Propose a migration order
+
+**Adjust grouping to the target architecture pattern from `TARGET.md`:**
+
+- **Modular monolith target** — group by domain (one module per bounded context). This is the most common case.
+- **Microservices target** — same domain grouping, but each module also gets a service boundary call-out (data ownership, API surface).
+- **Serverless target** — finer granularity; one entry point may be one function. Group by deployment unit, not just by domain.
+- **In-place refactor** — group by current code structure since the move is in-stack.
 
 Default ordering by **risk × dependency** (lower risk first):
 

@@ -11,39 +11,41 @@ It works equally for:
 - **Vendor escape** — moving off a managed service to self-hosted with the same observable contract
 - **Language port** — JS → TS, Python 2 → Python 3, etc.
 
-## The 4 skills
+## The 5 skills
 
 ```
-/rdd-map    →  Survey the system, identify modules, propose order
-/rdd-spec   →  For one module, capture business rules from code + interview
-/rdd-tests  →  Plan characterization tests that lock observable behavior
-/rdd-port   →  Implement tests against legacy, then rewrite with parity
+/rdd-target  →  Decide where to migrate: stack, architecture, conventions
+/rdd-map     →  Survey the legacy, identify modules, propose order
+/rdd-spec    →  For one module, capture business rules from code + interview
+/rdd-tests   →  Plan characterization tests that lock observable behavior
+/rdd-port    →  Implement tests against legacy, then rewrite with parity
 ```
 
-Each skill **reads the artifacts the previous one wrote**, so you can stop and resume across sessions. Artifacts live under `rdd/` (configurable).
+Three skills to **think** (target → map → spec) before two skills to **do** (tests → port). Each reads the artifacts the previous one wrote, so you can stop and resume across sessions. Artifacts live under `rdd/` (configurable).
 
 ## Workflow
 
 ```
-                          ┌──────────────┐
-                          │  .rdd.yml    │  ← stack config (legacy + target)
-                          └──────┬───────┘
-                                 │
-              ┌──────────────────┼──────────────────┐
-              ▼                  ▼                  ▼
-       ┌───────────┐      ┌───────────┐      ┌───────────┐
-       │ /rdd-map  │      │ /rdd-spec │      │/rdd-tests │
-       └─────┬─────┘      └─────┬─────┘      └─────┬─────┘
-             ▼                  ▼                  ▼
-        rdd/MAP.md      rdd/<mod>/SPEC.md   rdd/<mod>/TESTS.md
-                                                    │
-                                                    ▼
-                                            ┌───────────┐
-                                            │ /rdd-port │
-                                            └─────┬─────┘
-                                                  ▼
-                                       new code + green tests
-                                       on legacy AND target
+        ┌─────────────┐
+        │ /rdd-target │  ← decide architecture, framework, conventions
+        └──────┬──────┘
+               ▼
+         rdd/TARGET.md  +  populates .rdd.yml target block
+               │
+               ▼
+        ┌─────────────┐
+        │  /rdd-map   │  ← survey legacy with target in mind
+        └──────┬──────┘
+               ▼
+          rdd/MAP.md
+               │
+               ▼  (per module, repeat)
+        ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
+        │ /rdd-spec   │  →   │ /rdd-tests  │  →   │ /rdd-port   │
+        └──────┬──────┘      └──────┬──────┘      └──────┬──────┘
+               ▼                    ▼                    ▼
+        rdd/<m>/SPEC.md     rdd/<m>/TESTS.md   new code + green tests
+                                                on legacy AND target
 ```
 
 ## Principles
@@ -103,13 +105,14 @@ The skills read this file. **Never** hardcode stack assumptions — write them h
 You have a legacy backend (Edge Functions, monolithic Rails app, PHP service, etc.) and want to migrate to a new stack module by module.
 
 ```bash
-/rdd-map                    # produces rdd/MAP.md
-/rdd-spec products          # produces rdd/products/SPEC.md
-/rdd-tests products         # produces rdd/products/TESTS.md
+/rdd-target                 # decide target stack, architecture, conventions → rdd/TARGET.md
+/rdd-map                    # survey the legacy with target in mind → rdd/MAP.md
+/rdd-spec products          # → rdd/products/SPEC.md
+/rdd-tests products         # → rdd/products/TESTS.md
 /rdd-port products          # writes tests + new code, parity verified
 ```
 
-Repeat per module. Cut over via feature flag when ready.
+Run `/rdd-target` and `/rdd-map` once. Repeat the spec → tests → port loop per module. Cut over via feature flag when ready.
 
 ### Use case 2: In-place refactor
 

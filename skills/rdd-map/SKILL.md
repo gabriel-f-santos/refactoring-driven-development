@@ -24,7 +24,33 @@ Key fields you'll use:
 - `TARGET.md` — read the **architecture pattern**, **cutover strategy**, and **module structure conventions**; these shape the MAP
 - `artifacts_dir` — where to write `MAP.md`
 
-### 2. Inventory the legacy code
+### 2. Validate inputs (pre-flight)
+
+Before scanning a single file, run these checks against the inputs you just loaded. Catch problems that would otherwise produce a confused MAP. Stop and surface findings to the user instead of guessing.
+
+**Configuration consistency:**
+
+- `legacy.source` path exists in the project
+- `legacy.stack` description is non-empty and plausible (matches what's actually in `legacy.source` — e.g., if `legacy.stack` says "Rails" but the directory has only TS files, flag it)
+- `artifacts_dir` is writable
+
+**`TARGET.md` completeness:**
+
+- Every TD in the **Decisions Summary** has a `Choice` filled (not `<pending>`). If any TD is unresolved, stop and ask the user to complete `/rdd-target` first — module grouping depends on the architecture pattern decision.
+- The **chosen architecture pattern** (TD covering monolith vs microservices vs serverless) is explicit. The MAP grouping rules in step 6 depend on this.
+- The **chosen cutover strategy** is explicit. Migration ordering and risk classification depend on it.
+
+**Cross-document contradictions:**
+
+- `legacy.stack` describes a stack the chosen target architecture cannot meaningfully replace (e.g., if legacy is a desktop app and target is a web backend, the migration scope is mis-defined — escalate before mapping)
+- Decisions in `TARGET.md` reference modules or capabilities not present in `legacy.source` (rare, but worth flagging)
+- The `target.test_framework` is set in `.rdd.yml` (downstream skills depend on it; if missing, flag)
+
+**If any issue is found:** stop. Quote the conflicting statements or point to the missing field. Wait for the user to resolve (typically by re-running `/rdd-target` or editing `.rdd.yml`). Re-validate before proceeding.
+
+**If no issues:** proceed.
+
+### 3. Inventory the legacy code
 
 Use codebase exploration tools (Glob, Grep, Read, or the Explore agent for large codebases):
 
@@ -35,7 +61,7 @@ Use codebase exploration tools (Glob, Grep, Read, or the Explore agent for large
 
 If the codebase is large (>50 entry points or >500 files), spawn the Explore agent with a very-thorough prompt to do this inventory.
 
-### 3. Group entry points into modules
+### 4. Group entry points into modules
 
 Heuristics to group:
 
@@ -52,7 +78,7 @@ A module is the **unit of migration** — the smallest chunk you can cut over in
 
 If you find one giant blob (e.g., one shared "utils" module), call it out explicitly — it will block migration and may need pre-emptive splitting.
 
-### 4. Detect dependencies
+### 5. Detect dependencies
 
 For each module, find which other modules it depends on:
 
@@ -65,7 +91,7 @@ Build a dependency relationship list. Look for:
 - **Cycles** — flag them; they make ordering hard
 - **Hubs** — modules many others depend on; migrate late or migrate carefully
 
-### 5. Propose a migration order
+### 6. Propose a migration order
 
 **Adjust grouping to the target architecture pattern from `TARGET.md`:**
 
@@ -87,7 +113,7 @@ Default ordering by **risk × dependency** (lower risk first):
 
 Adjust based on dependencies (a module everyone depends on must be available; if it's high-risk, mitigate).
 
-### 6. Write `MAP.md`
+### 7. Write `MAP.md`
 
 Create `{artifacts_dir}/MAP.md` using the template in `templates/MAP.md`. It must contain:
 
@@ -97,7 +123,7 @@ Create `{artifacts_dir}/MAP.md` using the template in `templates/MAP.md`. It mus
 - **Migration order** — numbered list of waves with rationale
 - **Open questions** — things you couldn't determine from code alone (ask the user)
 
-### 7. Hand-off
+### 8. Hand-off
 
 Tell the user:
 

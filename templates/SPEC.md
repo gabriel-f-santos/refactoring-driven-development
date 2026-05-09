@@ -16,7 +16,7 @@
 
 ### Multi-tenancy boundary
 
-- All queries scoped by `company_id` (or equivalent).
+- All queries scoped by `company_id` (or per `TARGET.md` convention)
 
 ## Use cases
 
@@ -35,22 +35,58 @@
 | Method | Path | Auth | Request | Response | Status codes |
 |--------|------|------|---------|----------|--------------|
 | GET | `/products` | required | `?page&limit&q` | `{ data: Product[], total }` | 200, 401 |
-| POST | `/products` | required, `products.create` | `{ name, price, ... }` | `{ id, ... }` | 201, 400, 401, 403, 422 |
-| ... | | | | | |
+| POST | `/products` | required, `products.create` | `{ name, price, ... }` | `{ id, ... }` (representation) | 201, 400, 401, 403, 422 |
+| POST | `/products/:id/archive` | required, `products.update` | (none) | (no body) | 204, 401, 403, 404 |
 
 Pagination defaults: `page=1`, `limit=20`, max `limit=100`.
 Sort default: `created_at DESC`.
 
+### REST conventions (status code selection)
+
+| Status | When | Body |
+|--------|------|------|
+| 200 OK | Operation returns meaningful data | Yes — the resource or data produced |
+| 201 Created | POST creates a new identifiable resource | Yes — representation of created resource |
+| 204 No Content | Operation succeeded with nothing meaningful to return | **None** — no body at all |
+| 202 Accepted | Async operation queued; result not yet available | Optional — reference for polling |
+
+**Never return `{ message: "..." }` as the sole content of a success response.** The HTTP status communicates the outcome; the body carries data or is empty.
+
+For 201 with a retrievable resource, include `Location: /resource/:id` header.
+
 ## Business rules
 
-> Source codes: `(code: path:line)`, `(user-confirmed)`, `(legacy bug, intentional parity)`
+> Source codes: `(code: path:line)`, `(user-confirmed)`, `(legacy bug, intentional parity)`. Each rule must be testable.
 
 - **BR-01** — Sale total equals sum of line items minus discounts, rounded half-up to 2 decimals. `(code: legacy/sales.ts:128)`
 - **BR-02** — A customer cannot have two appointments overlapping by ≥1 minute on the same employee's calendar. `(code: legacy/appointments.ts:64; user-confirmed)`
 - **BR-03** — Stripe webhook with the same `event.id` is idempotent: a second delivery returns 200 without re-applying side effects. `(code: legacy/webhooks/stripe.ts:22)`
-- **BR-04** — When a sale is cancelled within 5 minutes of creation, no commission is generated. `(user-confirmed; not in code — was a verbal rule)`
-- **BR-05** — Empty product name returns 422 with body `{ error: "name_required" }` (note: legacy returns `name_required`, not the more standard `validation_error`). `(legacy bug, intentional parity)`
-- ...
+- **BR-04** — When a sale is cancelled within 5 minutes of creation, no commission is generated. `(user-confirmed; not in code — verbal rule)`
+- **BR-05** — Empty product name returns 422 with `NAME_REQUIRED`. `(legacy bug — frontend depends on this exact code, intentional parity)`
+
+## Error Catalog
+
+> Domain-specific errors this module emits. Codes are referenced by BRs and by `/rdd-tests` acceptance criteria. Globally unique within the subproject.
+
+**Error response format** (defined once per subproject, in the first phase that exposes HTTP endpoints):
+
+```
+{ statusCode, error, message }
+```
+
+Where `error` is the SCREAMING_SNAKE_CASE code from the catalog.
+
+| Code | HTTP | Message | Trigger |
+|------|------|---------|---------|
+| NAME_REQUIRED | 422 | Name is required | POST/PUT product with empty name |
+| OVERLAP_DETECTED | 409 | Appointment overlaps existing booking | POST appointment overlapping ≥1 min on same employee |
+| EVENT_ALREADY_PROCESSED | 200 (yes, 200) | (none — silently no-ops) | Stripe webhook re-delivery with same event.id |
+| INVALID_DISCOUNT | 422 | Discount cannot exceed sale total | POST sale where discount > sum(items) |
+
+**Don't include in catalog:**
+
+- Generic 500 / 404 unmatched route errors
+- Validation errors the framework's validation layer already returns uniformly across endpoints — those appear in API Contracts as "400 validation error" without a code
 
 ## Side effects
 
@@ -59,7 +95,6 @@ Sort default: `created_at DESC`.
 | Sale created | Webhook `sale.created` to configured URL | `{ id, total, items: [...] }` |
 | Appointment confirmed | Email to customer | template `appointment_confirmation` |
 | Stock falls below threshold | Queue message `stock.low_alert` | `{ product_id, current, threshold }` |
-| ... | | |
 
 ## Out of scope
 
@@ -71,12 +106,12 @@ Things this module explicitly does **not** do:
 
 ## Open questions
 
-- [ ] What happens when a webhook URL returns 5xx repeatedly? (Legacy code retries 3x; is this the intent or a bug?)
+- [ ] What happens when a webhook URL returns 5xx repeatedly? (Legacy retries 3x; is this the intent or a bug?)
 - [ ] ...
 
 ## Intentional deviations from legacy
 
-> Filled in during `/rdd-port` if any deviation is approved by the user. Default is empty — parity is the rule.
+> Default empty — parity is the rule. Filled in during `/rdd-port` only if the user explicitly approves a deviation.
 
 - (none)
 

@@ -51,10 +51,14 @@ Three skills to **think** (target → map → spec) before two skills to **do** 
 ## Principles
 
 1. **Parity first, refactor later.** First port mimics current behavior exactly. Improvement is a separate step, after green tests prove parity.
-2. **Spec before code.** Every module gets a written spec with numbered business rules (BR-01, BR-02...) before any porting.
-3. **Characterization, not aspiration.** Tests describe what the system *does*, not what it *should do*. Bug-for-bug parity is the default; intentional behavior changes are tracked explicitly.
-4. **Tests that earn their keep.** Every test maps 1:1 to a business rule or observable side effect. No snapshot-of-everything, no "controller calls service", no `expect(x).toBeDefined()`.
-5. **Strangler-style cutover.** New code coexists with legacy behind a feature flag. Cutover is gradual and reversible.
+2. **Decide before mapping.** Target architecture (TD-01, TD-02...) is decided up front and recorded with rationale. Module grouping and test posture flow from those decisions.
+3. **Spec before code.** Every module gets a written spec with numbered business rules (BR-01, BR-02...) before any porting.
+4. **Characterization, not aspiration.** Tests describe what the system *does*, not what it *should do*. Bug-for-bug parity is the default; intentional behavior changes are tracked explicitly.
+5. **Tests that earn their keep.** Every test maps 1:1 to a business rule or observable side effect, written using AC template formulas (`[METHOD] [/path] with [input] returns [status] with [body]`). No snapshot-of-everything, no "controller calls service", no `expect(x).toBeDefined()`.
+6. **Validate before generating.** Each skill runs a pre-flight check against its inputs (config consistency, cross-document contradictions, missing decisions) before writing a single line of output.
+7. **Resumable execution.** Long-running ports persist state in a progress file (`PORT.progress.md`) and a per-entry-point task list. Stop after each entry point and wait for explicit "Continuar?" — unless the user opted into continuous mode.
+8. **Fix-loop discipline.** When tests fail during porting, max 3 focused attempts before escalating. No weakening tests, no skipping, no swallowing errors.
+9. **Strangler-style cutover.** New code coexists with legacy behind a feature flag. Cutover is gradual and reversible.
 
 ## Installation
 

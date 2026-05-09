@@ -21,8 +21,8 @@ It works equally for:
 ```
 /rdd-specify-01        →  Decide where to migrate: stack, architecture, conventions
 /rdd-map-codebase-02   →  Survey the legacy, identify modules, propose order
-/rdd-specify-03        →  For one module, capture business rules from code + interview
-/rdd-refactor-04       →  Plan characterization tests, lock legacy, port with parity
+/rdd-specify-03        →  Capture business rules from code (single module or batch-all-via-subagents)
+/rdd-refactor-04       →  Plan characterization tests, lock legacy, port with parity (per module)
 ```
 
 **Optional (2 skills):**
@@ -137,14 +137,17 @@ The full pipeline is calibrated for **high-stakes work** — production migratio
 You have a legacy backend (Edge Functions, monolithic Rails app, PHP service, etc.) and want to migrate to a new stack module by module.
 
 ```bash
-/rdd-specify-01                 # decide target stack, architecture, conventions → rdd/TARGET.md
-/rdd-map-codebase-02                    # survey the legacy with target in mind → rdd/MAP.md
-/rdd-specify-03 products          # → rdd/products/SPEC.md
-/rdd-refactor-04 products         # → rdd/products/TESTS.md
-/rdd-refactor-04 products          # writes tests + new code, parity verified
+/rdd-specify-01                  # decide target stack, architecture, conventions → rdd/TARGET.md
+/rdd-map-codebase-02             # survey the legacy with target in mind → rdd/MAP.md
+/rdd-specify-03                  # batch mode: parallel-spec ALL modules → rdd/<m>/SPEC.md each
+/rdd-refactor-04 products        # → rdd/products/TESTS.md + parity port (one module at a time)
+/rdd-refactor-04 customers       # next module
+# ... repeat per module
 ```
 
-Run `/rdd-specify-01` and `/rdd-map-codebase-02` once. Repeat the spec → tests → port loop per module. Cut over via feature flag when ready.
+`rdd-specify-01`, `rdd-map-codebase-02`, and `rdd-specify-03` (in batch mode) run **once each up front** — they're analysis steps that don't affect production. Then `rdd-refactor-04` runs **per module** because porting must be sequential (parity verification, fix-loop discipline, cutover). Cut over via feature flag when each module is ready.
+
+If you prefer to spec one module at a time (e.g., to interview tribal knowledge per module), invoke `/rdd-specify-03 <module>` instead — same skill, single-module mode.
 
 ### Use case 2: In-place refactor
 

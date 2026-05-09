@@ -1,13 +1,20 @@
 ---
 name: rdd-specify-03
-description: Use this skill after rdd-map-codebase-02 to capture the business rules of one module from its legacy code, producing a numbered spec that downstream characterization tests will lock. Third step in the RDD pipeline (per-module). Triggers on "spec the X module", "specify X", "what does X do", "extract business rules from X". Produces rdd/{module}/SPEC.md.
+description: Use this skill after rdd-map-codebase-02 to capture the business rules of one module (or all modules in batch mode) from legacy code, producing numbered specs that downstream characterization tests will lock. Third step in the RDD pipeline (per-module or batch). Triggers on "spec the X module", "specify X", "spec all modules", "batch spec", "what does X do", "extract business rules". Produces rdd/{module}/SPEC.md per module; batch mode parallelizes across all modules from MAP.md.
 ---
 
-# rdd-specify-03 — Capture the spec of one module
+# rdd-specify-03 — Capture the spec of one module (or all)
 
-You are extracting the **observable behavior** of one legacy module into a written spec. The spec is the contract that the new implementation must honor. Tests will be designed against this spec in `/rdd-refactor-04`.
+You are extracting the **observable behavior** of legacy code into written specs. The spec is the contract that the new implementation must honor. Tests will be designed against this spec in `/rdd-refactor-04`.
 
-## Procedure
+## Modes
+
+- **Single module** (default with module name): `/rdd-specify-03 products` — full procedure including user interview for tribal knowledge
+- **Batch** (no argument or `all`): `/rdd-specify-03` or `/rdd-specify-03 all` — parallel-spec all modules from `MAP.md` via subagents; user interview is **deferred** (open questions captured per-module instead)
+
+The single-module procedure is below. **Batch mode** (the long-tail-friendly path for migrations) is at the end. Both end up with the same `SPEC.md` shape per module.
+
+## Procedure (single module)
 
 ### 1. Load configuration and prior artifacts
 
@@ -214,6 +221,106 @@ A good BR is testable, sourced, and specific. Each maps to at least one upcoming
 - **Don't skip step 4 (simulation).** Static reading misses concurrency and edge cases the code happens to handle but no document captures.
 - **Don't write Error Catalog from imagination.** Codes come from grep'ing the legacy code for what it actually emits.
 
-## When to spawn sub-agents
+## When to spawn sub-agents (single mode)
 
 For modules with >20 entry points or >2000 lines of legacy code, use the Explore agent (very-thorough) to do the deep code read and return a structured summary. Then synthesize the spec yourself. Do **not** delegate the simulation step (4) — it requires the model's own reasoning over the structured data.
+
+---
+
+## Procedure (batch mode)
+
+When invoked with `all` or no argument, the skill specs **every module from MAP.md in parallel** via subagents. This is the productive path for migrations: one phase, many specs, hands-off until you review the open questions.
+
+The user interview is **deferred** — each subagent records unmapped consequences in its `SPEC.md`'s "Open questions" section instead of pausing for tribal knowledge. You batch-resolve open questions later (re-invoke `/rdd-specify-03 <module>` in single mode, or edit `SPEC.md` directly).
+
+### B1. Load and validate (once)
+
+Run steps 1 and 2 from the single-module procedure once at the start. The validation applies to all modules (it's about shared inputs: `.rdd.yml`, `TARGET.md`, `MAP.md`).
+
+If validation fails, stop — don't dispatch any subagents.
+
+### B2. Read MAP.md and extract module list
+
+Parse MAP.md for the module table. Capture for each module:
+
+- Name
+- Entry-point count (informs subagent thoroughness)
+- Files / source path hint
+- Wave (informs batching order)
+
+If `MAP.md` is missing or has zero modules, instruct the user to run `/rdd-map-codebase-02` first.
+
+### B3. Confirm batch with the user
+
+Tell the user:
+
+```
+Batch mode — about to spec N modules in parallel.
+- Wave 0: <modules>
+- Wave 1: <modules>
+- ...
+User interview is deferred. Each module's open questions go into its SPEC.md's "Open questions" section. Estimated time: X minutes (depends on module sizes). Continue?
+```
+
+Wait for confirmation. **Do not dispatch agents without explicit yes.** This is a paid, parallel operation — burning compute on misalignment is wasteful.
+
+### B4. Dispatch subagents in waves
+
+For each MAP wave (or in batches of 5–7 if a wave is larger):
+
+- Spawn **one general-purpose agent per module**, all in a **single message** so they run concurrently.
+- Each agent prompt is self-contained (the agent has no conversation context). Include:
+  - The module name and its files / source path from MAP.md
+  - Path to `TARGET.md` and `MAP.md` (so the agent can read them)
+  - Path to `templates/SPEC.md` for structure
+  - Where to write: `{artifacts_dir}/{module}/SPEC.md`
+  - Explicit instruction: **"Skip the user interview step. Capture every unmapped consequence and tribal-knowledge gap in the SPEC.md's 'Open questions' section instead. Do NOT use AskUserQuestion."**
+  - Steps 3, 4, and 6 from the single-module procedure (read code, simulate execution, draft SPEC.md). Skip step 5 (interview) and step 7 (`[DECIDE]` markers — those become Open questions in batch mode).
+  - Return value: path to written SPEC.md, BR count, Error Catalog count, Open question count
+- Wait for all agents in the wave to complete before dispatching the next wave.
+
+### B5. Aggregate and report
+
+After all waves complete:
+
+```
+Batch spec complete — N modules specced.
+
+| Module          | BRs | Errors | Open questions |
+|-----------------|-----|--------|----------------|
+| 00_foundation   |   8 |      3 |              2 |
+| ai-router       |  12 |      4 |              5 |
+| products        |  18 |      6 |              1 |
+| ...
+
+Total open questions: M
+
+Next steps:
+- Review open questions per-module — `/rdd-status` shows which modules need attention
+- Resolve them by running `/rdd-specify-03 <module>` in single mode (fills gaps via interview), or edit SPEC.md directly
+- When ready, start /rdd-refactor-04 on the first module of Wave 0
+```
+
+### B6. Don't write a global progress file
+
+Each `SPEC.md` is its own durable artifact. `/rdd-status` infers per-module state from disk. Don't create a `BATCH.progress.md` — there's no execution sequence to resume in batch mode (subagents either complete or fail; failures are reported and the user re-runs the failing module individually).
+
+## Anti-patterns in batch mode
+
+- **Don't dispatch without user confirmation** of the wave plan. Parallel agents are paid; surprise the user and you waste budget.
+- **Don't ask the user 14 questions.** That's the whole reason batch mode exists. Capture as Open questions, resolve later.
+- **Don't try to merge specs across modules** during aggregation. Each module's SPEC.md is independent.
+- **Don't skip validation pre-flight.** A missing `TARGET.md` decision affects every module — catch it once, not 14 times.
+- **Don't run batch on a project with 1–3 modules.** Single-module mode is faster end-to-end at that scale (no subagent overhead).
+- **Don't delegate the simulation step (step 4 from single mode).** Each subagent should run it for its own module. The reasoning is the value.
+- **Don't dispatch a wave that exceeds 10 parallel agents.** Split into smaller batches; orchestrate sequentially across batches.
+
+## When to use which mode
+
+| Situation | Mode |
+|-----------|------|
+| <4 modules in MAP.md | Single (overhead of batch isn't worth it) |
+| 4+ modules, want fast turnaround on drafts | **Batch** |
+| Resolving open questions on an existing SPEC.md | Single (the interview step is the value) |
+| Module has high domain complexity / lots of tribal knowledge | Single (interview catches what code doesn't say) |
+| Routine CRUD modules | Batch (code-readable, few tribal rules) |

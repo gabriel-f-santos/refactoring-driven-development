@@ -8,7 +8,7 @@
       "name": "refactoring-driven-development",
       "source": "./plugins/refactoring-driven-development",
       "description": "Spec-driven, parity-first refactoring and migration. Numbered pipeline: rdd-specify-01 → rdd-map-codebase-02 → rdd-specify-03 → rdd-refactor-04 (tests + port merged) → rdd-improve-05, plus rdd-status for progress.",
-      "version": "0.6.0",
+      "version": "0.7.0",
       "keywords": [
         "refactoring",
         "migration",

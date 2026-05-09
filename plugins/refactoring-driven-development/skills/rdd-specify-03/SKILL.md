@@ -10,7 +10,7 @@ You are extracting the **observable behavior** of legacy code into written specs
 ## Modes
 
 - **Single module** (default with module name): `/rdd-specify-03 products` — full procedure including user interview for tribal knowledge
-- **Batch** (no argument or `all`): `/rdd-specify-03` or `/rdd-specify-03 all` — parallel-spec all modules from `MAP.md` via subagents; user interview is **deferred** (open questions captured per-module instead)
+- **Batch (sequential autopilot)** (no argument or `all`): `/rdd-specify-03` or `/rdd-specify-03 all` — spec every module from `MAP.md` **one at a time**, recording progress to `BATCH_SPEC.progress.md` so you can resume across sessions if tokens run out or you pause. User interview is **deferred** per module (open questions captured in each `SPEC.md` instead).
 
 The single-module procedure is below. **Batch mode** (the long-tail-friendly path for migrations) is at the end. Both end up with the same `SPEC.md` shape per module.
 
@@ -227,100 +227,173 @@ For modules with >20 entry points or >2000 lines of legacy code, use the Explore
 
 ---
 
-## Procedure (batch mode)
+## Procedure (batch mode — sequential autopilot)
 
-When invoked with `all` or no argument, the skill specs **every module from MAP.md in parallel** via subagents. This is the productive path for migrations: one phase, many specs, hands-off until you review the open questions.
+When invoked with `all` or no argument, the skill specs **every module from MAP.md sequentially**, one at a time, while persisting progress to a file so the work survives session interruptions, token exhaustion, and user pauses.
 
-The user interview is **deferred** — each subagent records unmapped consequences in its `SPEC.md`'s "Open questions" section instead of pausing for tribal knowledge. You batch-resolve open questions later (re-invoke `/rdd-specify-03 <module>` in single mode, or edit `SPEC.md` directly).
+Why sequential and not parallel:
+
+- **Resumable.** If the conversation hits its context limit or you stop mid-run, the next session reads the progress file and continues from the next pending module — none of the completed work is lost.
+- **Predictable cost.** One module at a time. No bursts.
+- **Failures are isolated.** If module N fails, modules 1..N-1 are still done; you can retry just N.
+- **You can pause freely.** Stop after any module by closing the session — progress is durable on disk.
+
+The user interview is **deferred** per module — every unmapped consequence becomes an entry in that module's `SPEC.md` "Open questions" section instead of pausing for tribal knowledge. You batch-resolve open questions later by re-invoking `/rdd-specify-03 <module>` in single mode, or by editing the `SPEC.md` directly.
 
 ### B1. Load and validate (once)
 
 Run steps 1 and 2 from the single-module procedure once at the start. The validation applies to all modules (it's about shared inputs: `.rdd.yml`, `TARGET.md`, `MAP.md`).
 
-If validation fails, stop — don't dispatch any subagents.
+If validation fails, stop — don't start the autopilot.
 
 ### B2. Read MAP.md and extract module list
 
-Parse MAP.md for the module table. Capture for each module:
+Parse MAP.md for the module table. Capture per module: name, entry-point count, source path hint, wave. If MAP.md is missing or empty, instruct the user to run `/rdd-map-codebase-02` first.
 
-- Name
-- Entry-point count (informs subagent thoroughness)
-- Files / source path hint
-- Wave (informs batching order)
+### B3. Read or create the progress file
 
-If `MAP.md` is missing or has zero modules, instruct the user to run `/rdd-map-codebase-02` first.
+`{artifacts_dir}/BATCH_SPEC.progress.md` is the source of truth for resumability. Format:
 
-### B3. Confirm batch with the user
+```markdown
+# Batch Spec Progress
 
-Tell the user:
+**Status:** in_progress | completed
+**Started:** YYYY-MM-DD HH:MM
+**Last update:** YYYY-MM-DD HH:MM
+**Modules:** X/Y completed (Z failed)
+
+## Modules
+
+### 00_foundation
+- **Status:** completed | in_progress | pending | failed
+- **SPEC.md:** rdd/00_foundation/SPEC.md
+- **BRs:** 8  •  **Errors:** 3  •  **Open questions:** 2
+- **Notes:** —
+
+### ai-router
+- **Status:** pending
+- (filled when started)
+
+(... one entry per module from MAP.md, in MAP wave order)
+```
+
+**On invocation:**
+
+- If the file does not exist, create it with one entry per module in MAP order, all with `Status: pending`. The user is starting fresh.
+- If the file exists, read it. Identify modules with `Status: completed` (skip these), `Status: failed` (skip — user must retry individually), and `Status: pending` or `Status: in_progress` (work to do).
+- If a module is `in_progress` from a prior session that died mid-spec, treat as `pending` — the prior partial work may need to be redone. Tell the user: *"Found `<module>` in_progress from a prior session — the SPEC.md may be partial. I'll redo it."*
+
+### B4. Confirm plan with the user (once)
+
+If starting fresh, tell the user:
 
 ```
-Batch mode — about to spec N modules in parallel.
-- Wave 0: <modules>
-- Wave 1: <modules>
-- ...
-User interview is deferred. Each module's open questions go into its SPEC.md's "Open questions" section. Estimated time: X minutes (depends on module sizes). Continue?
+Batch spec — sequential autopilot.
+- N modules to spec, in MAP order:
+  Wave 0: <modules>
+  Wave 1: <modules>
+  ...
+- Each module: read code, simulate execution, draft SPEC.md, mark complete in BATCH_SPEC.progress.md, continue.
+- User interview is deferred — open questions go into each SPEC.md's "Open questions" section.
+- I will not stop between modules. If you need to pause, close the session — progress is persisted.
+
+Estimated time: X minutes (rough — bigger modules take longer).
+Continue?
 ```
 
-Wait for confirmation. **Do not dispatch agents without explicit yes.** This is a paid, parallel operation — burning compute on misalignment is wasteful.
+Wait for confirmation.
 
-### B4. Dispatch subagents in waves
-
-For each MAP wave (or in batches of 5–7 if a wave is larger):
-
-- Spawn **one general-purpose agent per module**, all in a **single message** so they run concurrently.
-- Each agent prompt is self-contained (the agent has no conversation context). Include:
-  - The module name and its files / source path from MAP.md
-  - Path to `TARGET.md` and `MAP.md` (so the agent can read them)
-  - Path to `templates/SPEC.md` for structure
-  - Where to write: `{artifacts_dir}/{module}/SPEC.md`
-  - Explicit instruction: **"Skip the user interview step. Capture every unmapped consequence and tribal-knowledge gap in the SPEC.md's 'Open questions' section instead. Do NOT use AskUserQuestion."**
-  - Steps 3, 4, and 6 from the single-module procedure (read code, simulate execution, draft SPEC.md). Skip step 5 (interview) and step 7 (`[DECIDE]` markers — those become Open questions in batch mode).
-  - Return value: path to written SPEC.md, BR count, Error Catalog count, Open question count
-- Wait for all agents in the wave to complete before dispatching the next wave.
-
-### B5. Aggregate and report
-
-After all waves complete:
+If resuming, tell the user:
 
 ```
-Batch spec complete — N modules specced.
+Resuming batch spec — M of N modules already done.
+- Completed: <list, count only if many>
+- Skipping (previously failed): <list>
+- Remaining to spec: <list>
 
-| Module          | BRs | Errors | Open questions |
-|-----------------|-----|--------|----------------|
-| 00_foundation   |   8 |      3 |              2 |
-| ai-router       |  12 |      4 |              5 |
-| products        |  18 |      6 |              1 |
+Continue from `<next pending module>`?
+```
+
+Wait for confirmation.
+
+### B5. The autopilot loop
+
+For each pending module in MAP order:
+
+1. **Mark `in_progress`** in `BATCH_SPEC.progress.md`. Update the timestamp.
+2. **Run the spec procedure** for this module:
+   - Step 3 (read legacy code)
+   - Step 4 (simulate execution and find unmapped consequences)
+   - **Skip step 5 (user interview)** — capture every unmapped consequence as an entry in the SPEC.md "Open questions" section
+   - Step 6 (write SPEC.md incrementally)
+   - **Skip step 7 (`[DECIDE]` markers)** — those become Open questions in batch mode (no `AskUserQuestion` calls)
+3. **For modules with >20 entry points or >2000 lines of legacy code**: spawn the Explore agent (very-thorough) to do the deep code read. Synthesize the spec yourself from the agent's output.
+4. **On success**: mark `completed` in `BATCH_SPEC.progress.md`. Record BR count, Error count, Open question count, path to SPEC.md.
+5. **On failure** (legacy code unreadable, file system error, ambiguity that genuinely can't be deferred to Open questions): mark `failed` with a one-line reason. Do **not** stop the autopilot — continue to the next module. The user retries failed modules individually after the run.
+6. **Briefly emit progress to chat**:
+   ```
+   ✅ <module> — <N> BRs, <M> errors, <K> open questions  (<X>/<Y> complete)
+   ```
+   Keep it one line per module so the run scrolls predictably.
+7. **Continue to next pending module.** Do NOT stop, do NOT ask for confirmation between modules — the user opted into autopilot.
+
+### B6. Final report
+
+When the loop finishes:
+
+```
+Batch spec complete — <X>/<Y> modules specced (<Z> failed).
+
+| Module          | Status     | BRs | Errors | Open questions |
+|-----------------|------------|-----|--------|----------------|
+| 00_foundation   | ✅ done    |   8 |      3 |              2 |
+| ai-router       | ✅ done    |  12 |      4 |              5 |
+| whatsapp-channel| ❌ failed  |   — |      — | (see notes)    |
 | ...
 
-Total open questions: M
+Failed modules (retry individually):
+- whatsapp-channel — <reason>
+
+Total open questions: <M>
 
 Next steps:
-- Review open questions per-module — `/rdd-status` shows which modules need attention
-- Resolve them by running `/rdd-specify-03 <module>` in single mode (fills gaps via interview), or edit SPEC.md directly
-- When ready, start /rdd-refactor-04 on the first module of Wave 0
+- Resolve open questions per-module — `/rdd-status` shows which need attention
+- Run `/rdd-specify-03 <module>` in single mode to interview tribal knowledge, or edit SPEC.md directly
+- Retry any failed modules: `/rdd-specify-03 <failed-module>`
+- When ready, start `/rdd-refactor-04` on the first module of Wave 0
 ```
 
-### B6. Don't write a global progress file
+Mark `BATCH_SPEC.progress.md` `Status: completed` (even if some modules failed — the autopilot ran to its end; failures are recorded per module for retry).
 
-Each `SPEC.md` is its own durable artifact. `/rdd-status` infers per-module state from disk. Don't create a `BATCH.progress.md` — there's no execution sequence to resume in batch mode (subagents either complete or fail; failures are reported and the user re-runs the failing module individually).
+### B7. What `/rdd-status` shows
+
+`/rdd-status` reads `BATCH_SPEC.progress.md` if present and reports:
+
+- Setup row: `batch_spec: in progress (M/N)` or `batch_spec: completed`
+- The per-module table reflects completed/failed/pending for the spec column
+
+If a session dies mid-batch, `/rdd-status` and the progress file together tell you exactly where to resume.
 
 ## Anti-patterns in batch mode
 
-- **Don't dispatch without user confirmation** of the wave plan. Parallel agents are paid; surprise the user and you waste budget.
-- **Don't ask the user 14 questions.** That's the whole reason batch mode exists. Capture as Open questions, resolve later.
-- **Don't try to merge specs across modules** during aggregation. Each module's SPEC.md is independent.
-- **Don't skip validation pre-flight.** A missing `TARGET.md` decision affects every module — catch it once, not 14 times.
-- **Don't run batch on a project with 1–3 modules.** Single-module mode is faster end-to-end at that scale (no subagent overhead).
-- **Don't delegate the simulation step (step 4 from single mode).** Each subagent should run it for its own module. The reasoning is the value.
-- **Don't dispatch a wave that exceeds 10 parallel agents.** Split into smaller batches; orchestrate sequentially across batches.
+- **Don't run in parallel.** Sequential is the design. Parallel was tried and dropped — it sacrificed resumability for wall-clock time, and resumability matters more for migrations that span days.
+- **Don't STOP between modules in batch mode.** If the user wants per-module review, they use single mode. Stopping defeats autopilot.
+- **Don't use AskUserQuestion in batch mode.** Every question becomes an Open question in the SPEC.md.
+- **Don't dispatch the autopilot without user confirmation** of the plan.
+- **Don't ask the user N questions.** That's the whole reason batch mode exists.
+- **Don't try to merge specs across modules.** Each `SPEC.md` is independent.
+- **Don't skip validation pre-flight.** A missing `TARGET.md` decision affects every module — catch it once, not N times.
+- **Don't run batch on a project with 1–3 modules.** Single mode is faster end-to-end at that scale (no progress-file overhead).
+- **Don't retry failed modules inside the autopilot.** Retry is the user's call, individually, after the run completes.
+- **Don't delete `BATCH_SPEC.progress.md` until the run is `completed`.** It's the resume anchor.
 
 ## When to use which mode
 
 | Situation | Mode |
 |-----------|------|
-| <4 modules in MAP.md | Single (overhead of batch isn't worth it) |
-| 4+ modules, want fast turnaround on drafts | **Batch** |
-| Resolving open questions on an existing SPEC.md | Single (the interview step is the value) |
+| <4 modules in MAP.md | Single (autopilot overhead isn't worth it) |
+| 4+ modules, want hands-off drafts with resumability | **Batch (sequential autopilot)** |
+| Resolving open questions on an existing SPEC.md | Single (interview step is the value) |
 | Module has high domain complexity / lots of tribal knowledge | Single (interview catches what code doesn't say) |
-| Routine CRUD modules | Batch (code-readable, few tribal rules) |
+| Routine CRUD modules | Batch — they're code-readable, few tribal rules |
+| Resuming after a session died mid-run | Batch — re-invoke and it picks up where the progress file left off |

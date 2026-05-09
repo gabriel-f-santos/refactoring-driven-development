@@ -56,17 +56,21 @@ Each skill **reads the artifacts the previous one wrote**, so you can stop and r
 
 ## Installation
 
-```bash
-claude plugins install github:gabriel-f-santos/refactoring-driven-development
+Inside Claude Code, add the marketplace and install the plugin:
+
+```
+/plugin marketplace add gabriel-f-santos/refactoring-driven-development
+/plugin install refactoring-driven-development@gabriel-f-santos
 ```
 
-Then in any project where you want to use RDD:
+Then in any project where you want to use RDD, copy the config template and fill in your legacy + target stack:
 
 ```bash
-# Copy and edit the config
 cp ~/.claude/plugins/refactoring-driven-development/templates/.rdd.yml .rdd.yml
-# Open in editor and fill in legacy + target stack
+# edit .rdd.yml — describe your legacy stack, target stack, test framework
 ```
+
+Verify the skills are available by typing `/` in Claude Code — you should see `/rdd-map`, `/rdd-spec`, `/rdd-tests`, and `/rdd-port`.
 
 ## Configuration: `.rdd.yml`
 

@@ -1,0 +1,23 @@
+{
+  "name": "gabriel-f-santos",
+  "owner": {
+    "name": "Gabriel F. Santos",
+    "url": "https://github.com/gabriel-f-santos"
+  },
+  "plugins": [
+    {
+      "name": "refactoring-driven-development",
+      "source": ".",
+      "description": "Spec-driven, parity-first refactoring and migration. Map → Spec → Characterization Tests → Port.",
+      "version": "0.1.0",
+      "keywords": [
+        "refactoring",
+        "migration",
+        "characterization-tests",
+        "strangler-fig",
+        "spec-driven",
+        "legacy-code"
+      ]
+    }
+  ]
+}

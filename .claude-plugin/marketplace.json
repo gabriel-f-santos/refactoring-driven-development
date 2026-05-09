@@ -1,15 +1,14 @@
 {
   "name": "gabriel-f-santos",
   "owner": {
-    "name": "Gabriel F. Santos",
-    "url": "https://github.com/gabriel-f-santos"
+    "name": "Gabriel F. Santos"
   },
   "plugins": [
     {
       "name": "refactoring-driven-development",
-      "source": ".",
-      "description": "Spec-driven, parity-first refactoring and migration. Map → Spec → Characterization Tests → Port.",
-      "version": "0.5.0",
+      "source": "./plugins/refactoring-driven-development",
+      "description": "Spec-driven, parity-first refactoring and migration. Numbered pipeline: rdd-specify-01 → rdd-map-codebase-02 → rdd-specify-03 → rdd-refactor-04 (tests + port merged) → rdd-improve-05, plus rdd-status for progress.",
+      "version": "0.5.1",
       "keywords": [
         "refactoring",
         "migration",

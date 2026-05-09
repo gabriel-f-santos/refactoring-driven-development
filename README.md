@@ -84,14 +84,9 @@ Inside Claude Code, add the marketplace and install the plugin:
 /plugin install refactoring-driven-development@gabriel-f-santos
 ```
 
-Then in any project where you want to use RDD, copy the config template and fill in your legacy + target stack:
-
-```bash
-cp ~/.claude/plugins/refactoring-driven-development/templates/.rdd.yml .rdd.yml
-# edit .rdd.yml — describe your legacy stack, target stack, test framework
-```
-
 Verify the skills are available by typing `/` in Claude Code — you should see `/rdd-specify-01`, `/rdd-map-codebase-02`, `/rdd-specify-03`, `/rdd-refactor-04`, `/rdd-improve-05`, and `/rdd-status`.
+
+Then in any project where you want to use RDD, just invoke `/rdd-specify-01` — the skill auto-creates `.rdd.yml` from the bundled template if it doesn't exist and walks you through filling in legacy + target stack.
 
 ## Configuration: `.rdd.yml`
 

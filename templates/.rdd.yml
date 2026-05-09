@@ -1,0 +1,40 @@
+# Refactoring-Driven Development configuration
+# Copy this file to your project root as `.rdd.yml` and fill in the blanks.
+
+legacy:
+  # Free-text description of the source stack. Skills use this to inform their
+  # exploration heuristics (file extensions, framework conventions, etc.).
+  stack: ""                           # e.g. "Supabase Edge Functions (Deno)"
+
+  # Path (relative to project root) where legacy code lives.
+  source: ""                          # e.g. "supabase/functions/"
+
+  # Optional. Helps skills understand persistence boundaries.
+  database: ""                        # e.g. "Postgres (Supabase)"
+
+  # Optional. Anything skills should know that isn't obvious from the code.
+  notes: ""                           # e.g. "RLS policies in migration files"
+
+target:
+  # Free-text description of the target stack.
+  stack: ""                           # e.g. "NestJS + Fastify"
+
+  # Path where new code will be written.
+  source: ""                          # e.g. "apps/api/src/"
+
+  # Test framework the suite will use.
+  test_framework: ""                  # e.g. "Vitest"
+
+  # Strategy notes that the rdd-tests skill should respect.
+  test_strategy: ""                   # e.g. "integration-first; testcontainers
+                                      #       Postgres; mocks only at HTTP boundary"
+
+# Where artifacts (MAP.md and per-module SPEC/TESTS) are written.
+artifacts_dir: "rdd/"
+
+conventions:
+  # Prefix for numbered business rules in SPEC.md (default "BR" -> BR-01).
+  business_rule_prefix: "BR"
+
+  # Per-module directory pattern. {module} is substituted with the module name.
+  module_dir_pattern: "rdd/{module}/"

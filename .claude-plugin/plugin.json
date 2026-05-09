@@ -1,0 +1,20 @@
+{
+  "name": "refactoring-driven-development",
+  "version": "0.1.0",
+  "description": "Spec-driven, parity-first refactoring and migration. Map → Spec → Characterization Tests → Port.",
+  "author": {
+    "name": "Gabriel F. Santos",
+    "url": "https://github.com/gabriel-f-santos"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/gabriel-f-santos/refactoring-driven-development",
+  "keywords": [
+    "refactoring",
+    "migration",
+    "characterization-tests",
+    "strangler-fig",
+    "spec-driven",
+    "legacy-code",
+    "tdd"
+  ]
+}

@@ -11,9 +11,17 @@ This is the **only RDD skill where decisions about the target are made**. After 
 
 ## Procedure
 
-### 1. Initialize configuration
+### 1. Initialize configuration and check skip_target
 
 Check for `.rdd.yml` in the project root. If absent, copy from `templates/.rdd.yml`. If `legacy.*` is unfilled, ask for it now (just `legacy.stack` and `legacy.source` — enough for the survey step).
+
+**Check `skip_target`.** If `.rdd.yml` has `skip_target: true`, switch to **minimal mode** (skip steps 2–8 and produce a conventions-only TARGET.md):
+
+- Confirm with the user: *"`skip_target: true` detected. Producing minimal TARGET.md focused on conventions only — no architecture decisions or candidate comparison. Continue?"*
+- If confirmed, jump to step 9 (Document) but write only the **Why migrating** paragraph and the **Conventions** section — skip Technical Decisions, Cross-cutting concerns, and Decisions Summary
+- Then jump to step 11 (Auto-populate `.rdd.yml`) using values already present in the file (or asking the user for any gaps)
+
+This is for in-place refactors of consolidated stacks: no architectural choices to make, just record the conventions the rewrite will follow.
 
 ### 2. Run a focused constraints interview
 

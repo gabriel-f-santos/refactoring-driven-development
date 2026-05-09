@@ -38,3 +38,9 @@ conventions:
 
   # Per-module directory pattern. {module} is substituted with the module name.
   module_dir_pattern: "rdd/{module}/"
+
+# Optional. Set to `true` for in-place refactor of a consolidated codebase
+# where target stack and conventions are already established. /rdd-target
+# will produce a minimal TARGET.md focused on conventions only — no
+# candidate-architecture comparison, no Decisions Summary table.
+skip_target: false

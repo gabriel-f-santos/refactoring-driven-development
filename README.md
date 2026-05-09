@@ -4,14 +4,19 @@
 
 RDD is to refactoring/migration what TDD is to greenfield development: a discipline that forces you to **lock current behavior in tests before you touch a line of code**, then rewrite confidently.
 
+> **A note on "TDD".** Classical TDD (Beck) writes a failing test for code that doesn't exist yet, then makes it pass. RDD applies the same test-first principle to **legacy code that already exists** — what Michael Feathers called *characterization testing*. Tests describe what the legacy *does*, not what it *should do*. The discipline is the same (red → green → refactor); the starting point differs.
+
 It works equally for:
 
 - **Migration between stacks** — Edge Functions → backend service, Express → NestJS, Rails → Phoenix, monolith → services
 - **In-place refactor of a legacy module** — same stack, but cleaner code under a behavior-locking test suite
 - **Vendor escape** — moving off a managed service to self-hosted with the same observable contract
 - **Language port** — JS → TS, Python 2 → Python 3, etc.
+- **Idiomatic improvement** — clean up a parity-correct module after porting, with tests as a safety net
 
-## The 5 skills
+## The 7 skills
+
+**Core pipeline (5 skills):**
 
 ```
 /rdd-target  →  Decide where to migrate: stack, architecture, conventions
@@ -21,7 +26,14 @@ It works equally for:
 /rdd-port    →  Implement tests against legacy, then rewrite with parity
 ```
 
-Three skills to **think** (target → map → spec) before two skills to **do** (tests → port). Each reads the artifacts the previous one wrote, so you can stop and resume across sessions. Artifacts live under `rdd/` (configurable).
+**Optional (2 skills):**
+
+```
+/rdd-improve →  After parity, refactor the new code idiomatically — tests guard parity
+/rdd-status  →  Show migration progress across all modules and phases
+```
+
+Three skills to **think** (target → map → spec) before two skills to **do** (tests → port), with one skill to **polish** (improve) and one to **observe** (status). Each reads the artifacts the previous one wrote, so you can stop and resume across sessions. Artifacts live under `rdd/` (configurable).
 
 ## Workflow
 
@@ -40,12 +52,15 @@ Three skills to **think** (target → map → spec) before two skills to **do** 
           rdd/MAP.md
                │
                ▼  (per module, repeat)
-        ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
-        │ /rdd-spec   │  →   │ /rdd-tests  │  →   │ /rdd-port   │
-        └──────┬──────┘      └──────┬──────┘      └──────┬──────┘
-               ▼                    ▼                    ▼
-        rdd/<m>/SPEC.md     rdd/<m>/TESTS.md   new code + green tests
-                                                on legacy AND target
+        ┌─────────────┐      ┌─────────────┐      ┌─────────────┐      ┌──────────────┐
+        │ /rdd-spec   │  →   │ /rdd-tests  │  →   │ /rdd-port   │  →   │ /rdd-improve │
+        └──────┬──────┘      └──────┬──────┘      └──────┬──────┘      └──────┬───────┘
+               ▼                    ▼                    ▼                    ▼
+        rdd/<m>/SPEC.md     rdd/<m>/TESTS.md   parity-correct code   idiomatic code
+                                                + green tests on      (same green tests
+                                                legacy AND target      still pass)
+
+         /rdd-status  ← run anytime to see where each module is
 ```
 
 ## Principles
@@ -76,7 +91,7 @@ cp ~/.claude/plugins/refactoring-driven-development/templates/.rdd.yml .rdd.yml
 # edit .rdd.yml — describe your legacy stack, target stack, test framework
 ```
 
-Verify the skills are available by typing `/` in Claude Code — you should see `/rdd-map`, `/rdd-spec`, `/rdd-tests`, and `/rdd-port`.
+Verify the skills are available by typing `/` in Claude Code — you should see `/rdd-target`, `/rdd-map`, `/rdd-spec`, `/rdd-tests`, `/rdd-port`, `/rdd-improve`, and `/rdd-status`.
 
 ## Configuration: `.rdd.yml`
 
@@ -98,9 +113,27 @@ artifacts_dir: "rdd/"
 conventions:
   business_rule_prefix: "BR"
   module_dir_pattern: "rdd/{module}/"
+
+# Optional: skip /rdd-target when target stack is already established
+# (e.g., in-place refactor of a consolidated codebase). The skill produces
+# a minimal TARGET.md focused on conventions.
+skip_target: false
 ```
 
 The skills read this file. **Never** hardcode stack assumptions — write them here once.
+
+## Lightweight mode
+
+The full pipeline is calibrated for **high-stakes work** — production migrations, multi-month rewrites, multi-tenant SaaS. For smaller scopes, skip what doesn't pay for itself:
+
+| Scope | Skip | Why |
+|-------|------|-----|
+| In-place refactor with target = legacy stack | Set `skip_target: true` | No architectural decisions to make; conventions already established |
+| Single small module (≤5 entry points) | Skip `/rdd-map` | Module boundary is obvious; just go straight to `/rdd-spec` |
+| Pure cosmetic refactor (rename, extract method) inside an already-tested module | Skip everything; use tests directly | RDD overhead doesn't pay off for a 10-minute change |
+| Greenfield code | Don't use RDD | RDD assumes legacy code to characterize; for new code use spec-kit or similar |
+
+**Heuristic:** if the change touches >300 lines of legacy code OR has >2 reasonable architectures OR will be in production for >12 months, run the full pipeline. Otherwise, drop phases that don't earn their keep.
 
 ## Use cases
 
@@ -125,6 +158,24 @@ Same stack, but a module accumulated cruft and you want to rewrite it cleanly. T
 ### Use case 3: Vendor escape
 
 Moving off a SaaS dependency. Treat the old vendor's API as `legacy`. Treat your replacement as `target`. Run the flow per consumer surface.
+
+### Use case 4: Idiomatic improvement after porting
+
+You ran `/rdd-port products` and the new module is parity-correct but ugly — direct copy of legacy structure, repeated code, no value objects. Run `/rdd-improve products` to clean up incrementally. The same characterization tests from `/rdd-tests` guard parity: any refactor that breaks observable behavior shows up immediately.
+
+```bash
+/rdd-improve products       # → rdd/products/IMPROVE.md (refactor plan), then incremental refactors
+```
+
+### Use case 5: Tracking progress across many modules
+
+For a multi-module migration spanning weeks or months, you need a quick way to see where each module is. Run `/rdd-status` anytime:
+
+```bash
+/rdd-status                 # reads existing artifacts, prints a per-module phase table
+```
+
+No persistent state file — `/rdd-status` infers progress from what's on disk.
 
 ## What this is not
 

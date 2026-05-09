@@ -25,6 +25,10 @@ Check `{artifacts_dir}/`:
 - **MAP.md**
   - Doesn't exist → `map: not started`
   - Exists → `map: completed (N modules identified)`
+- **BATCH_SPEC.progress.md** (only if a batch spec autopilot is or was running)
+  - Doesn't exist → don't show this row
+  - Exists, `Status: in_progress` → `batch_spec: in progress (M/N modules done, K failed)` — also note next pending module so user knows where to resume
+  - Exists, `Status: completed` → `batch_spec: completed (M/N modules done, K failed)`
 
 ### 3. Detect per-module status
 
@@ -48,9 +52,15 @@ Also cross-reference with `MAP.md` — list any module that's in `MAP.md` but ha
 
 ### 4. Detect "currently active"
 
-A module is "currently active" if any of its progress files (`REFACTOR.progress.md`, `IMPROVE.progress.md`) has `Status: in_progress`. Highlight these — they're where work resumes.
+Currently active work exists when any of these is true:
 
-If multiple modules are simultaneously in progress, that's a flag — typically the user should finish one before starting another. Note it but don't enforce it.
+- `BATCH_SPEC.progress.md` shows `Status: in_progress` → autopilot interrupted; resume with `/rdd-specify-03` (no arg)
+- A module's `REFACTOR.progress.md` shows `Status: in_progress` → port paused; resume with `/rdd-refactor-04 <module>`
+- A module's `IMPROVE.progress.md` shows `Status: in_progress` → improve paused; resume with `/rdd-improve-05 <module>`
+
+Highlight these — they're where work resumes. If batch_spec is in progress AND a module's port is in progress, both are listed (the user is doing both phases on different modules).
+
+If multiple per-module progress files are simultaneously `in_progress` (more than one port at the same time), that's a flag — typically the user should finish one before starting another. Note it but don't enforce it.
 
 ### 5. Detect blockers
 
@@ -58,6 +68,7 @@ Look for signs of blocked work:
 
 - `REFACTOR.progress.md` shows fix-loop attempts at 3 with no completion → port is stuck on a test failure
 - Open questions in `SPEC.md` still unresolved after `TESTS.md` exists → tests planned without full spec
+- `BATCH_SPEC.progress.md` has any modules with `Status: failed` → list them; user must retry individually
 - `MAP.md` lists modules not yet started after a long elapsed time (compare file timestamps if signal is weak)
 
 ### 6. Emit the report

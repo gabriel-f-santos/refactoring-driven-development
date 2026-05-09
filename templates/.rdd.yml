@@ -25,7 +25,7 @@ target:
   # Test framework the suite will use.
   test_framework: ""                  # e.g. "Vitest"
 
-  # Strategy notes that the rdd-tests skill should respect.
+  # Strategy notes that the rdd-refactor-04 skill should respect.
   test_strategy: ""                   # e.g. "integration-first; testcontainers
                                       #       Postgres; mocks only at HTTP boundary"
 
@@ -40,7 +40,7 @@ conventions:
   module_dir_pattern: "rdd/{module}/"
 
 # Optional. Set to `true` for in-place refactor of a consolidated codebase
-# where target stack and conventions are already established. /rdd-target
+# where target stack and conventions are already established. /rdd-specify-01
 # will produce a minimal TARGET.md focused on conventions only — no
 # candidate-architecture comparison, no Decisions Summary table.
 skip_target: false

@@ -14,53 +14,53 @@ It works equally for:
 - **Language port** — JS → TS, Python 2 → Python 3, etc.
 - **Idiomatic improvement** — clean up a parity-correct module after porting, with tests as a safety net
 
-## The 7 skills
+## The 6 skills
 
-**Core pipeline (5 skills):**
+**Core pipeline (4 skills):**
 
 ```
-/rdd-target  →  Decide where to migrate: stack, architecture, conventions
-/rdd-map     →  Survey the legacy, identify modules, propose order
-/rdd-spec    →  For one module, capture business rules from code + interview
-/rdd-tests   →  Plan characterization tests that lock observable behavior
-/rdd-port    →  Implement tests against legacy, then rewrite with parity
+/rdd-specify-01        →  Decide where to migrate: stack, architecture, conventions
+/rdd-map-codebase-02   →  Survey the legacy, identify modules, propose order
+/rdd-specify-03        →  For one module, capture business rules from code + interview
+/rdd-refactor-04       →  Plan characterization tests, lock legacy, port with parity
 ```
 
 **Optional (2 skills):**
 
 ```
-/rdd-improve →  After parity, refactor the new code idiomatically — tests guard parity
-/rdd-status  →  Show migration progress across all modules and phases
+/rdd-improve-05        →  After parity, refactor the new code idiomatically — tests guard parity
+/rdd-status            →  Show migration progress across all modules and phases
 ```
 
-Three skills to **think** (target → map → spec) before two skills to **do** (tests → port), with one skill to **polish** (improve) and one to **observe** (status). Each reads the artifacts the previous one wrote, so you can stop and resume across sessions. Artifacts live under `rdd/` (configurable).
+Three skills to **specify and map** (specify-01 → map-codebase-02 → specify-03) before one skill to **refactor with TDD** (refactor-04, which merges test planning + parity port), with one to **polish** (improve-05) and one to **observe** (status). Each reads the artifacts the previous one wrote, so you can stop and resume across sessions. Artifacts live under `rdd/` (configurable).
 
 ## Workflow
 
 ```
-        ┌─────────────┐
-        │ /rdd-target │  ← decide architecture, framework, conventions
-        └──────┬──────┘
-               ▼
-         rdd/TARGET.md  +  populates .rdd.yml target block
-               │
-               ▼
-        ┌─────────────┐
-        │  /rdd-map   │  ← survey legacy with target in mind
-        └──────┬──────┘
-               ▼
-          rdd/MAP.md
-               │
-               ▼  (per module, repeat)
-        ┌─────────────┐      ┌─────────────┐      ┌─────────────┐      ┌──────────────┐
-        │ /rdd-spec   │  →   │ /rdd-tests  │  →   │ /rdd-port   │  →   │ /rdd-improve │
-        └──────┬──────┘      └──────┬──────┘      └──────┬──────┘      └──────┬───────┘
-               ▼                    ▼                    ▼                    ▼
-        rdd/<m>/SPEC.md     rdd/<m>/TESTS.md   parity-correct code   idiomatic code
-                                                + green tests on      (same green tests
-                                                legacy AND target      still pass)
+        ┌──────────────────┐
+        │ /rdd-specify-01  │  ← decide architecture, framework, conventions
+        └────────┬─────────┘
+                 ▼
+           rdd/TARGET.md  +  populates .rdd.yml target block
+                 │
+                 ▼
+        ┌────────────────────────┐
+        │ /rdd-map-codebase-02   │  ← survey legacy with target in mind
+        └────────┬───────────────┘
+                 ▼
+            rdd/MAP.md
+                 │
+                 ▼  (per module, repeat)
+        ┌──────────────────┐      ┌──────────────────┐      ┌──────────────────┐
+        │ /rdd-specify-03  │  →   │ /rdd-refactor-04 │  →   │ /rdd-improve-05  │
+        └────────┬─────────┘      └────────┬─────────┘      └────────┬─────────┘
+                 ▼                         ▼                         ▼
+          rdd/<m>/SPEC.md      rdd/<m>/TESTS.md (Phase 1)    idiomatic code
+                               + parity-correct code         (same green tests
+                               + green tests on legacy        still pass)
+                                 AND target
 
-         /rdd-status  ← run anytime to see where each module is
+           /rdd-status  ← run anytime to see where each module is
 ```
 
 ## Principles
@@ -71,7 +71,7 @@ Three skills to **think** (target → map → spec) before two skills to **do** 
 4. **Characterization, not aspiration.** Tests describe what the system *does*, not what it *should do*. Bug-for-bug parity is the default; intentional behavior changes are tracked explicitly.
 5. **Tests that earn their keep.** Every test maps 1:1 to a business rule or observable side effect, written using AC template formulas (`[METHOD] [/path] with [input] returns [status] with [body]`). No snapshot-of-everything, no "controller calls service", no `expect(x).toBeDefined()`.
 6. **Validate before generating.** Each skill runs a pre-flight check against its inputs (config consistency, cross-document contradictions, missing decisions) before writing a single line of output.
-7. **Resumable execution.** Long-running ports persist state in a progress file (`PORT.progress.md`) and a per-entry-point task list. Stop after each entry point and wait for explicit "Continuar?" — unless the user opted into continuous mode.
+7. **Resumable execution.** Long-running ports persist state in a progress file (`REFACTOR.progress.md`) and a per-entry-point task list. Stop after each entry point and wait for explicit "Continuar?" — unless the user opted into continuous mode.
 8. **Fix-loop discipline.** When tests fail during porting, max 3 focused attempts before escalating. No weakening tests, no skipping, no swallowing errors.
 9. **Strangler-style cutover.** New code coexists with legacy behind a feature flag. Cutover is gradual and reversible.
 
@@ -91,7 +91,7 @@ cp ~/.claude/plugins/refactoring-driven-development/templates/.rdd.yml .rdd.yml
 # edit .rdd.yml — describe your legacy stack, target stack, test framework
 ```
 
-Verify the skills are available by typing `/` in Claude Code — you should see `/rdd-target`, `/rdd-map`, `/rdd-spec`, `/rdd-tests`, `/rdd-port`, `/rdd-improve`, and `/rdd-status`.
+Verify the skills are available by typing `/` in Claude Code — you should see `/rdd-specify-01`, `/rdd-map-codebase-02`, `/rdd-specify-03`, `/rdd-refactor-04`, `/rdd-improve-05`, and `/rdd-status`.
 
 ## Configuration: `.rdd.yml`
 
@@ -114,7 +114,7 @@ conventions:
   business_rule_prefix: "BR"
   module_dir_pattern: "rdd/{module}/"
 
-# Optional: skip /rdd-target when target stack is already established
+# Optional: skip /rdd-specify-01 when target stack is already established
 # (e.g., in-place refactor of a consolidated codebase). The skill produces
 # a minimal TARGET.md focused on conventions.
 skip_target: false
@@ -129,7 +129,7 @@ The full pipeline is calibrated for **high-stakes work** — production migratio
 | Scope | Skip | Why |
 |-------|------|-----|
 | In-place refactor with target = legacy stack | Set `skip_target: true` | No architectural decisions to make; conventions already established |
-| Single small module (≤5 entry points) | Skip `/rdd-map` | Module boundary is obvious; just go straight to `/rdd-spec` |
+| Single small module (≤5 entry points) | Skip `/rdd-map-codebase-02` | Module boundary is obvious; just go straight to `/rdd-specify-03` |
 | Pure cosmetic refactor (rename, extract method) inside an already-tested module | Skip everything; use tests directly | RDD overhead doesn't pay off for a 10-minute change |
 | Greenfield code | Don't use RDD | RDD assumes legacy code to characterize; for new code use spec-kit or similar |
 
@@ -142,14 +142,14 @@ The full pipeline is calibrated for **high-stakes work** — production migratio
 You have a legacy backend (Edge Functions, monolithic Rails app, PHP service, etc.) and want to migrate to a new stack module by module.
 
 ```bash
-/rdd-target                 # decide target stack, architecture, conventions → rdd/TARGET.md
-/rdd-map                    # survey the legacy with target in mind → rdd/MAP.md
-/rdd-spec products          # → rdd/products/SPEC.md
-/rdd-tests products         # → rdd/products/TESTS.md
-/rdd-port products          # writes tests + new code, parity verified
+/rdd-specify-01                 # decide target stack, architecture, conventions → rdd/TARGET.md
+/rdd-map-codebase-02                    # survey the legacy with target in mind → rdd/MAP.md
+/rdd-specify-03 products          # → rdd/products/SPEC.md
+/rdd-refactor-04 products         # → rdd/products/TESTS.md
+/rdd-refactor-04 products          # writes tests + new code, parity verified
 ```
 
-Run `/rdd-target` and `/rdd-map` once. Repeat the spec → tests → port loop per module. Cut over via feature flag when ready.
+Run `/rdd-specify-01` and `/rdd-map-codebase-02` once. Repeat the spec → tests → port loop per module. Cut over via feature flag when ready.
 
 ### Use case 2: In-place refactor
 
@@ -161,10 +161,10 @@ Moving off a SaaS dependency. Treat the old vendor's API as `legacy`. Treat your
 
 ### Use case 4: Idiomatic improvement after porting
 
-You ran `/rdd-port products` and the new module is parity-correct but ugly — direct copy of legacy structure, repeated code, no value objects. Run `/rdd-improve products` to clean up incrementally. The same characterization tests from `/rdd-tests` guard parity: any refactor that breaks observable behavior shows up immediately.
+You ran `/rdd-refactor-04 products` and the new module is parity-correct but ugly — direct copy of legacy structure, repeated code, no value objects. Run `/rdd-improve-05 products` to clean up incrementally. The same characterization tests from `/rdd-refactor-04` guard parity: any refactor that breaks observable behavior shows up immediately.
 
 ```bash
-/rdd-improve products       # → rdd/products/IMPROVE.md (refactor plan), then incremental refactors
+/rdd-improve-05 products       # → rdd/products/IMPROVE.md (refactor plan), then incremental refactors
 ```
 
 ### Use case 5: Tracking progress across many modules

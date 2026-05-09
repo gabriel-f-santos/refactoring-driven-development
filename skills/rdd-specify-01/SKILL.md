@@ -1,11 +1,11 @@
 ---
-name: rdd-target
-description: Use this skill at the very start of a refactoring or migration project to make the forward-looking architectural decisions (stack, framework, conventions) before any legacy survey or porting begins. Triggers on "where should I migrate to", "decide target stack", "choose framework", "design the target architecture". Produces rdd/TARGET.md with numbered technical decisions (TD-NN) and populates .rdd.yml.
+name: rdd-specify-01
+description: Use this skill at the very start of a refactoring or migration project to make the forward-looking architectural decisions (stack, framework, conventions) before any legacy survey or refactor begins. First step in the RDD pipeline. Triggers on "where should I migrate to", "decide target stack", "choose framework", "design the target architecture". Produces rdd/TARGET.md with numbered technical decisions (TD-NN) and populates .rdd.yml.
 ---
 
-# rdd-target — Decide where you're going
+# rdd-specify-01 — Decide where you're going
 
-You are helping the user make the **forward-looking architectural decisions** for a refactoring or migration project. This skill runs **before** `/rdd-map` because chosen target shapes how legacy modules are grouped, which test framework is used, and which cutover strategies apply.
+You are helping the user make the **forward-looking architectural decisions** for a refactoring or migration project. This skill runs **before** `/rdd-map-codebase-02` because chosen target shapes how legacy modules are grouped, which test framework is used, and which cutover strategies apply.
 
 This is the **only RDD skill where decisions about the target are made**. After this, decisions are locked into `TARGET.md` and `.rdd.yml`; downstream skills consume them as constraints.
 
@@ -39,7 +39,7 @@ If the user already knows the target, skip ahead to step 5 — but still produce
 
 ### 3. Survey the legacy at high level
 
-Not the deep inventory `/rdd-map` performs — **15–30 minutes of reading max**. Just enough to:
+Not the deep inventory `/rdd-map-codebase-02` performs — **15–30 minutes of reading max**. Just enough to:
 
 - Identify legacy architectural style (monolith, function-per-endpoint, services, event-driven)
 - Spot integration points that constrain target choice (queues, third-party APIs, webhooks, scheduled jobs)
@@ -160,7 +160,7 @@ Tell the user:
 
 - Path to `TARGET.md` and that all Decision fields are filled
 - Confirmation that `.rdd.yml` is filled
-- Next step: `/rdd-map` will use the target choice to inform module grouping and migration order
+- Next step: `/rdd-map-codebase-02` will use the target choice to inform module grouping and migration order
 
 ## In-place refactor mode
 
@@ -183,7 +183,7 @@ The only legitimate skip is when the user already has an equivalent decision doc
 - **Don't decide architecture without input.** This is the user's call. You surface tradeoffs.
 - **Don't underestimate boring choices.** Postgres + a monolithic framework solves more problems than people admit.
 - **Don't conflate stack with pattern.** "NestJS" is a framework; "modular monolith" is a pattern. Decide them separately (separate TDs).
-- **Don't decide things downstream skills should decide.** Module boundaries → `/rdd-map`. Per-module API → `/rdd-spec`. Specific tests → `/rdd-tests`. This skill stays at the architecture level.
+- **Don't decide things downstream skills should decide.** Module boundaries → `/rdd-map-codebase-02`. Per-module API → `/rdd-specify-03`. Specific tests → `/rdd-refactor-04`. This skill stays at the architecture level.
 - **Don't write `TARGET.md` without rationale.** A doc that says "we use NestJS" without "because [stated constraint]" is useless six months later when someone asks why.
 - **Don't fill in Decision fields yourself.** They're left blank for the user.
 - **Don't pad to 4 options.** 2 honest options beats 4 with one strawman.

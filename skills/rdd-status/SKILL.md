@@ -11,7 +11,7 @@ You are reporting RDD migration progress. **You generate no new artifacts.** You
 
 ### 1. Load configuration
 
-Read `.rdd.yml` for `artifacts_dir`. If absent, tell the user RDD isn't configured yet — point at `/rdd-target` to get started.
+Read `.rdd.yml` for `artifacts_dir`. If absent, tell the user RDD isn't configured yet — point at `/rdd-specify-01` to get started.
 
 ### 2. Detect setup phase status
 
@@ -37,9 +37,9 @@ For each module dir under `{artifacts_dir}/` (excluding `.` and skipping non-dir
 | `SPEC.md` exists, no open questions | `spec: completed (N BRs)` |
 | no `TESTS.md` | `tests: not started` |
 | `TESTS.md` exists | `tests: completed (N tests planned)` |
-| no `PORT.progress.md` | `port: not started` |
-| `PORT.progress.md` with `Status: in_progress` | `port: in progress (phase=X, EP Y/Z)` |
-| `PORT.progress.md` with `Status: completed` | `port: completed (Y/Z tests passing)` |
+| no `REFACTOR.progress.md` | `port: not started` |
+| `REFACTOR.progress.md` with `Status: in_progress` | `port: in progress (phase=X, EP Y/Z)` |
+| `REFACTOR.progress.md` with `Status: completed` | `port: completed (Y/Z tests passing)` |
 | no `IMPROVE.progress.md` | `improve: not started` (or `n/a` if port isn't done) |
 | `IMPROVE.progress.md` with `Status: in_progress` | `improve: in progress (refactor X/Y)` |
 | `IMPROVE.progress.md` with `Status: completed` | `improve: completed` |
@@ -48,7 +48,7 @@ Also cross-reference with `MAP.md` — list any module that's in `MAP.md` but ha
 
 ### 4. Detect "currently active"
 
-A module is "currently active" if any of its progress files (`PORT.progress.md`, `IMPROVE.progress.md`) has `Status: in_progress`. Highlight these — they're where work resumes.
+A module is "currently active" if any of its progress files (`REFACTOR.progress.md`, `IMPROVE.progress.md`) has `Status: in_progress`. Highlight these — they're where work resumes.
 
 If multiple modules are simultaneously in progress, that's a flag — typically the user should finish one before starting another. Note it but don't enforce it.
 
@@ -56,7 +56,7 @@ If multiple modules are simultaneously in progress, that's a flag — typically 
 
 Look for signs of blocked work:
 
-- `PORT.progress.md` shows fix-loop attempts at 3 with no completion → port is stuck on a test failure
+- `REFACTOR.progress.md` shows fix-loop attempts at 3 with no completion → port is stuck on a test failure
 - Open questions in `SPEC.md` still unresolved after `TESTS.md` exists → tests planned without full spec
 - `MAP.md` lists modules not yet started after a long elapsed time (compare file timestamps if signal is weak)
 
@@ -85,7 +85,7 @@ commissions       ⬜      ⬜      ⬜                 ⬜        wave 4
 
 Currently active
 ────────────────
-• customers — /rdd-port paused at EP-4 of 8. Resume: /rdd-port customers
+• customers — /rdd-refactor-04 paused at EP-4 of 8. Resume: /rdd-refactor-04 customers
 
 Blockers
 ────────
@@ -93,14 +93,14 @@ Blockers
 
 Suggested next step
 ───────────────────
-Resume /rdd-port customers, or start /rdd-spec on a Wave-3 module if you want to parallelize spec/test work ahead.
+Resume /rdd-refactor-04 customers, or start /rdd-specify-03 on a Wave-3 module if you want to parallelize spec/test work ahead.
 ```
 
 Adjust the layout to fit whatever's actually in the artifacts. The goal is **at-a-glance comprehension**: the user looks at this once and knows where they are.
 
 ### 7. Respect missing inputs
 
-If `.rdd.yml` doesn't exist or `artifacts_dir` is empty, don't fail — just say "no RDD work has started yet" and point at `/rdd-target`.
+If `.rdd.yml` doesn't exist or `artifacts_dir` is empty, don't fail — just say "no RDD work has started yet" and point at `/rdd-specify-01`.
 
 If MAP.md doesn't exist but per-module dirs do (rare — user manually created), report what you find with a note about the missing MAP.
 

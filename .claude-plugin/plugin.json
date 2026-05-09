@@ -1,7 +1,7 @@
 {
   "name": "refactoring-driven-development",
-  "version": "0.4.0",
-  "description": "Spec-driven, parity-first refactoring and migration. Target → Map → Spec → Characterization Tests → Port → Improve, with /rdd-status for progress tracking.",
+  "version": "0.5.0",
+  "description": "Spec-driven, parity-first refactoring and migration. Numbered pipeline: rdd-specify-01 → rdd-map-codebase-02 → rdd-specify-03 → rdd-refactor-04 (tests + port merged) → rdd-improve-05, plus rdd-status for progress.",
   "author": {
     "name": "Gabriel F. Santos",
     "url": "https://github.com/gabriel-f-santos"

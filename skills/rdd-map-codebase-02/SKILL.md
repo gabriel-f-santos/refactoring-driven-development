@@ -1,11 +1,11 @@
 ---
-name: rdd-map
-description: Use this skill when starting a refactoring or migration project to survey the legacy system, identify module boundaries, and propose a safe migration order. Triggers on "map the legacy", "where do I start", "what modules do I have", "plan the migration". Produces rdd/MAP.md.
+name: rdd-map-codebase-02
+description: Use this skill after rdd-specify-01 to survey the legacy codebase, identify module boundaries, and propose a safe migration order. Second step in the RDD pipeline. Triggers on "map the legacy", "map the codebase", "where do I start", "what modules do I have", "plan the migration". Produces rdd/MAP.md.
 ---
 
-# rdd-map — Survey the legacy system
+# rdd-map-codebase-02 — Survey the legacy system
 
-You are mapping a legacy codebase as the **first step** of a Refactoring-Driven Development workflow. Your job is to identify migration boundaries (modules), their dependencies, and propose a safe order. You are not writing implementation code in this step.
+You are mapping a legacy codebase as the **second step** of a Refactoring-Driven Development workflow (after `/rdd-specify-01`). Your job is to identify migration boundaries (modules), their dependencies, and propose a safe order shaped by the chosen target architecture. You are not writing implementation code in this step.
 
 ## Procedure
 
@@ -14,9 +14,9 @@ You are mapping a legacy codebase as the **first step** of a Refactoring-Driven 
 Read in order:
 
 - `.rdd.yml` from the project root — for `legacy.*`, `target.*`, and `artifacts_dir`.
-- `{artifacts_dir}/TARGET.md` — the target architecture decision from `/rdd-target`.
+- `{artifacts_dir}/TARGET.md` — the target architecture decision from `/rdd-specify-01`.
 
-If either is missing, instruct the user to run `/rdd-target` first. **Do not proceed without `TARGET.md`** — module grouping and migration order depend on the target architecture pattern (a modular monolith and a microservices target produce different maps for the same legacy).
+If either is missing, instruct the user to run `/rdd-specify-01` first. **Do not proceed without `TARGET.md`** — module grouping and migration order depend on the target architecture pattern (a modular monolith and a microservices target produce different maps for the same legacy).
 
 Key fields you'll use:
 - `legacy.source` — where to scan
@@ -36,7 +36,7 @@ Before scanning a single file, run these checks against the inputs you just load
 
 **`TARGET.md` completeness:**
 
-- Every TD in the **Decisions Summary** has a `Choice` filled (not `<pending>`). If any TD is unresolved, stop and ask the user to complete `/rdd-target` first — module grouping depends on the architecture pattern decision.
+- Every TD in the **Decisions Summary** has a `Choice` filled (not `<pending>`). If any TD is unresolved, stop and ask the user to complete `/rdd-specify-01` first — module grouping depends on the architecture pattern decision.
 - The **chosen architecture pattern** (TD covering monolith vs microservices vs serverless) is explicit. The MAP grouping rules in step 6 depend on this.
 - The **chosen cutover strategy** is explicit. Migration ordering and risk classification depend on it.
 
@@ -46,7 +46,7 @@ Before scanning a single file, run these checks against the inputs you just load
 - Decisions in `TARGET.md` reference modules or capabilities not present in `legacy.source` (rare, but worth flagging)
 - The `target.test_framework` is set in `.rdd.yml` (downstream skills depend on it; if missing, flag)
 
-**If any issue is found:** stop. Quote the conflicting statements or point to the missing field. Wait for the user to resolve (typically by re-running `/rdd-target` or editing `.rdd.yml`). Re-validate before proceeding.
+**If any issue is found:** stop. Quote the conflicting statements or point to the missing field. Wait for the user to resolve (typically by re-running `/rdd-specify-01` or editing `.rdd.yml`). Re-validate before proceeding.
 
 **If no issues:** proceed.
 
@@ -129,11 +129,11 @@ Tell the user:
 
 - Brief summary of what you found (counts, surprises, blockers)
 - Path to `MAP.md`
-- Suggested first module to spec (`/rdd-spec <module>`)
+- Suggested first module to spec (`/rdd-specify-03 <module>`)
 
 ## Anti-patterns to avoid
 
-- **Don't read every file in detail.** This is a survey. Identify boundaries; deep-read happens in `/rdd-spec`.
+- **Don't read every file in detail.** This is a survey. Identify boundaries; deep-read happens in `/rdd-specify-03`.
 - **Don't propose specific implementation choices** for the new system. That's not your job here.
 - **Don't merge clearly distinct domains** just because they share files. Flag the entanglement; let the user decide.
 - **Don't skip the configuration check.** Without `.rdd.yml`, downstream skills break.

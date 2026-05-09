@@ -1,11 +1,11 @@
 ---
-name: rdd-spec
-description: Use this skill after rdd-map to capture the business rules of one module from its legacy code, producing a numbered spec that downstream characterization tests will lock. Triggers on "spec the X module", "what does X do", "extract business rules from X". Produces rdd/{module}/SPEC.md.
+name: rdd-specify-03
+description: Use this skill after rdd-map-codebase-02 to capture the business rules of one module from its legacy code, producing a numbered spec that downstream characterization tests will lock. Third step in the RDD pipeline (per-module). Triggers on "spec the X module", "specify X", "what does X do", "extract business rules from X". Produces rdd/{module}/SPEC.md.
 ---
 
-# rdd-spec — Capture the spec of one module
+# rdd-specify-03 — Capture the spec of one module
 
-You are extracting the **observable behavior** of one legacy module into a written spec. The spec is the contract that the new implementation must honor. Tests will be designed against this spec in `/rdd-tests`.
+You are extracting the **observable behavior** of one legacy module into a written spec. The spec is the contract that the new implementation must honor. Tests will be designed against this spec in `/rdd-refactor-04`.
 
 ## Procedure
 
@@ -41,7 +41,7 @@ Before reading legacy code, check for problems that would produce a flawed spec:
 
 ### 3. Read the module's legacy code
 
-For the chosen module, read **every entry point and every file it imports** within the legacy source. This is the deep-read step — `/rdd-map` only sampled.
+For the chosen module, read **every entry point and every file it imports** within the legacy source. This is the deep-read step — `/rdd-map-codebase-02` only sampled.
 
 Capture from the code:
 
@@ -181,7 +181,7 @@ Explicit list of what this module does **not** do.
 
 #### Open questions
 
-Things you couldn't determine and need resolution before `/rdd-tests`.
+Things you couldn't determine and need resolution before `/rdd-refactor-04`.
 
 #### Intentional deviations from legacy
 
@@ -199,11 +199,11 @@ Tell the user:
 - Number of business rules captured
 - Number of errors in Error Catalog
 - Any open questions still pending
-- Next step: `/rdd-tests {module}`
+- Next step: `/rdd-refactor-04 {module}`
 
 ## Quality bar for business rules
 
-A good BR is testable, sourced, and specific. Each maps to at least one upcoming test in `/rdd-tests`. If a BR can't be turned into a test, it's not behavior — rewrite or drop it.
+A good BR is testable, sourced, and specific. Each maps to at least one upcoming test in `/rdd-refactor-04`. If a BR can't be turned into a test, it's not behavior — rewrite or drop it.
 
 ## Anti-patterns to avoid
 

@@ -316,26 +316,81 @@ Continue from `<next pending module>`?
 
 Wait for confirmation.
 
-### B5. The autopilot loop
+### B5. The autopilot loop — one subagent per module
 
-For each pending module in MAP order:
+For each pending module in MAP order, the main agent dispatches **one general-purpose subagent** to do the spec work and waits for its completion. The main agent never reads the legacy module code itself in batch mode — that work happens inside the subagent's isolated context.
+
+This is a deliberate context-engineering choice. If the main agent did the work directly, it would accumulate every module's legacy code reading across the whole run, blowing past the context window after 4–6 modules even with prompt caching. With one subagent per module, the main agent only holds: progress-file state, MAP.md (cached), TARGET.md (cached), and per-module result metadata. Each subagent gets a fresh context, does its work, and returns a one-line summary.
+
+**For each pending module, do this in order:**
 
 1. **Mark `in_progress`** in `BATCH_SPEC.progress.md`. Update the timestamp.
-2. **Run the spec procedure** for this module:
-   - Step 3 (read legacy code)
-   - Step 4 (simulate execution and find unmapped consequences)
-   - **Skip step 5 (user interview)** — capture every unmapped consequence as an entry in the SPEC.md "Open questions" section
-   - Step 6 (write SPEC.md incrementally)
-   - **Skip step 7 (`[DECIDE]` markers)** — those become Open questions in batch mode (no `AskUserQuestion` calls)
-3. **For modules with >20 entry points or >2000 lines of legacy code**: spawn the Explore agent (very-thorough) to do the deep code read. Synthesize the spec yourself from the agent's output.
-4. **On success**: mark `completed` in `BATCH_SPEC.progress.md`. Record BR count, Error count, Open question count, path to SPEC.md.
-5. **On failure** (legacy code unreadable, file system error, ambiguity that genuinely can't be deferred to Open questions): mark `failed` with a one-line reason. Do **not** stop the autopilot — continue to the next module. The user retries failed modules individually after the run.
-6. **Briefly emit progress to chat**:
+2. **Dispatch one general-purpose subagent.** The agent has no prior conversation context — its prompt must be fully self-contained. Use this template (substituting `<module_name>`, source paths, and counts from MAP.md):
+
+   ```
+   You are running step "spec one module" as part of an RDD batch autopilot. The main agent has dispatched you with a self-contained prompt — you have no prior conversation context.
+
+   Module: <module_name>
+   Module's legacy source files: <comma-separated list or directory hint from MAP.md>
+   Module's MAP.md entry-point count: <count>
+
+   Read first (in this order):
+   1. <artifacts_dir>/TARGET.md — for chosen conventions, error format, multi-tenancy boundary
+   2. <artifacts_dir>/MAP.md — for context on how this module fits in the migration
+   3. The plugin's templates/SPEC.md for the artifact structure (path: <plugin_dir>/templates/SPEC.md)
+
+   Then perform these steps from the rdd-specify-03 single-module procedure:
+
+   Step 3 — Deep-read the module's legacy code:
+   - Read every entry point and every file it imports within the legacy source
+   - Capture entry points (method, path, auth), inputs, outputs per status code, DB ops, external calls, side effects, auth/authz, edge cases handled in code, and bugs the code embraces
+
+   Step 4 — Simulate execution and find unmapped consequences:
+   - For each capability, walk through inputs/outputs/related entities/concurrency/failure paths
+   - Anything no document addresses → record as an entry in the SPEC.md's "Open questions" section
+   - This step is yours to do — do not delegate it further
+
+   Step 6 — Draft SPEC.md incrementally:
+   - Write to: <artifacts_dir>/<module_name>/SPEC.md (create the directory if missing)
+   - Follow templates/SPEC.md structure exactly: Domain, Use cases, API surface, Business rules (numbered BR-NN), Error Catalog (SCREAMING_SNAKE_CASE codes), Side effects, Out of scope, Open questions, Intentional deviations from legacy
+   - Append section by section, not in one giant Write
+
+   Forbidden:
+   - Do NOT use AskUserQuestion. The user interview is deferred to a later session.
+   - Do NOT skip the Open questions section — every unmapped consequence and every tribal-knowledge gap goes there.
+   - Do NOT spec a different module. You are dispatched for <module_name> only.
+   - Do NOT modify TARGET.md, MAP.md, .rdd.yml, or any other module's SPEC.md.
+   - Do NOT spawn additional sub-agents (no nested delegation).
+
+   For very large modules (>2000 lines), use Glob/Grep/Read efficiently — read entry points first, then dive into imports as needed. Do not read every file in the legacy source if it's not imported by this module.
+
+   Return as your final message a single one-line summary in this exact format:
+   <module_name>: <BR_count> BRs, <error_count> errors in catalog, <open_question_count> open questions. SPEC.md at <artifacts_dir>/<module_name>/SPEC.md.
+
+   If you fail (legacy code unreadable, ambiguity blocking work), return instead:
+   <module_name>: FAILED — <one-line reason>
+   ```
+
+3. **Wait for the subagent to complete.** Do not dispatch the next module until this one returns.
+4. **Parse the subagent's one-line summary** and update `BATCH_SPEC.progress.md`:
+   - On success: mark `completed`, record BR / Error / Open question counts and SPEC.md path
+   - On `FAILED`: mark `failed` with the reason; **continue the loop** — failures are isolated per module
+5. **Briefly emit progress to chat** (one line, exactly what the subagent returned, prefixed with status):
    ```
    ✅ <module> — <N> BRs, <M> errors, <K> open questions  (<X>/<Y> complete)
    ```
-   Keep it one line per module so the run scrolls predictably.
-7. **Continue to next pending module.** Do NOT stop, do NOT ask for confirmation between modules — the user opted into autopilot.
+   or for failures:
+   ```
+   ❌ <module> — failed: <reason>  (<X>/<Y> complete)
+   ```
+6. **Continue to the next pending module.** Do NOT stop, do NOT ask for confirmation between modules — the user opted into autopilot.
+
+**Why this design wins on context engineering:**
+
+- **Main agent context stays bounded** — only progress-file state and per-module metadata accumulate. Across 14 modules, that's a few KB of growth, not 14×100k of legacy reading.
+- **Each subagent has fresh context** — no contamination from sibling modules, no risk of cross-module bleed in BR numbering or error catalog merging.
+- **Cost is predictable per module** — one subagent at a time. No bursts. If a module is a token outlier (huge legacy code), it's bounded to that subagent's run.
+- **Resumability is preserved** — the progress file is updated after each subagent returns, so any session interruption resumes cleanly from the next pending module.
 
 ### B6. Final report
 
@@ -377,13 +432,17 @@ If a session dies mid-batch, `/rdd-status` and the progress file together tell y
 ## Anti-patterns in batch mode
 
 - **Don't run in parallel.** Sequential is the design. Parallel was tried and dropped — it sacrificed resumability for wall-clock time, and resumability matters more for migrations that span days.
+- **Don't read the legacy code in the main agent during batch mode.** That defeats the context-engineering benefit of subagent-per-module. The main agent dispatches; the subagent reads.
+- **Don't dispatch more than one subagent at a time.** Sequential one-by-one is the design. Two simultaneous subagents = parallel mode in disguise.
+- **Don't accumulate per-module summaries in main-agent context as long-form prose.** A single line per module (`<module>: N BRs, M errors, K open questions`) is enough — the durable record is in `BATCH_SPEC.progress.md` and the per-module SPEC.md files.
 - **Don't STOP between modules in batch mode.** If the user wants per-module review, they use single mode. Stopping defeats autopilot.
-- **Don't use AskUserQuestion in batch mode.** Every question becomes an Open question in the SPEC.md.
+- **Don't use AskUserQuestion in batch mode** (main agent OR subagent). Every question becomes an Open question in the SPEC.md.
 - **Don't dispatch the autopilot without user confirmation** of the plan.
 - **Don't ask the user N questions.** That's the whole reason batch mode exists.
 - **Don't try to merge specs across modules.** Each `SPEC.md` is independent.
 - **Don't skip validation pre-flight.** A missing `TARGET.md` decision affects every module — catch it once, not N times.
-- **Don't run batch on a project with 1–3 modules.** Single mode is faster end-to-end at that scale (no progress-file overhead).
+- **Don't run batch on a project with 1–3 modules.** Single mode is faster end-to-end at that scale (no subagent dispatch overhead).
+- **Don't let subagents nest further sub-agents.** Keep the dispatch tree flat: main → one subagent per module → no deeper.
 - **Don't retry failed modules inside the autopilot.** Retry is the user's call, individually, after the run completes.
 - **Don't delete `BATCH_SPEC.progress.md` until the run is `completed`.** It's the resume anchor.
 

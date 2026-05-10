@@ -1,7 +1,7 @@
 {
   "name": "refactoring-driven-development",
-  "version": "0.10.0",
-  "description": "Spec-driven, parity-first refactoring and migration. Numbered pipeline: rdd-specify-01 → rdd-map-codebase-02 → rdd-specify-03 → rdd-refactor-04 (tests + port merged) → rdd-improve-05, plus rdd-status for progress.",
+  "version": "0.10.1",
+  "description": "Spec-driven, parity-first refactoring and migration. Autonomous numbered pipeline (rdd-specify-01 → rdd-map-codebase-02 → rdd-specify-03 → rdd-refactor-04 → rdd-improve-05) with Seq-ordered modules, upstream-port gates, and per-module spec/tasks/improve layout. PROGRESS.md is the single source of truth; rdd-status surfaces it.",
   "author": {
     "name": "Gabriel F. Santos"
   },

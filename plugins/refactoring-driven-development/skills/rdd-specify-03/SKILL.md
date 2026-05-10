@@ -1,18 +1,22 @@
 ---
 name: rdd-specify-03
-description: Use this skill after rdd-map-codebase-02 to capture the business rules of one module (or all modules in batch mode) from legacy code, producing numbered specs that downstream characterization tests will lock. Third step in the RDD pipeline (per-module or batch). Triggers on "spec the X module", "specify X", "spec all modules", "batch spec", "what does X do", "extract business rules". Produces rdd/{module}/SPEC.md per module; batch mode parallelizes across all modules from MAP.md.
+description: Use this skill after rdd-map-codebase-02 to capture the business rules of one module (or all modules in batch mode) from legacy code, producing numbered specs that downstream characterization tests will lock. Third step in the RDD pipeline (per-module or batch). Triggers on "spec the X module", "specify X", "spec all modules", "batch spec", "what does X do", "extract business rules". Produces rdd/<Seq>_<module>/spec/SPEC.md and rdd/<Seq>_<module>/PROGRESS.md per module (e.g., rdd/005_foundation/spec/SPEC.md); batch mode iterates across all modules from MAP.md in ascending Seq order.
 ---
 
 # rdd-specify-03 — Capture the spec of one module (or all)
 
 You are extracting the **observable behavior** of legacy code into written specs. The spec is the contract that the new implementation must honor. Tests will be designed against this spec in `/rdd-refactor-04`.
 
+This skill is **autonomous**: the legacy code already exists, so the source of truth is reading and simulating it — not interviewing the user. Anything you can't determine from code is captured as an entry under "Open questions" in `SPEC.md`. The user resolves those later by editing `SPEC.md` directly or re-running `/rdd-specify-03 <module>` after they've answered. Architectural decisions live in `/rdd-specify-01` (`TARGET.md`) — that's the only interview step in the pipeline.
+
 ## Modes
 
-- **Single module** (default with module name): `/rdd-specify-03 products` — full procedure including user interview for tribal knowledge
-- **Batch (sequential autopilot)** (no argument or `all`): `/rdd-specify-03` or `/rdd-specify-03 all` — spec every module from `MAP.md` **one at a time**, recording progress to `BATCH_SPEC.progress.md` so you can resume across sessions if tokens run out or you pause. User interview is **deferred** per module (open questions captured in each `SPEC.md` instead).
+Both modes produce the same `SPEC.md` shape per module. They differ only in orchestration:
 
-The single-module procedure is below. **Batch mode** (the long-tail-friendly path for migrations) is at the end. Both end up with the same `SPEC.md` shape per module.
+- **Single module** (`/rdd-specify-03 products`) — spec one module. Use when iterating on a specific module's spec, or after the user has answered Open questions and you want to re-spec with the new info.
+- **Batch (sequential autopilot)** (no argument or `all`): `/rdd-specify-03` or `/rdd-specify-03 all` — spec every module from `MAP.md` **one at a time**, recording progress to `BATCH_SPEC.progress.md` so you can resume across sessions if tokens run out or you pause.
+
+The single-module procedure is below. **Batch mode** (the long-tail-friendly path for migrations) is at the end.
 
 ## Procedure (single module)
 
@@ -22,9 +26,32 @@ Read in order:
 
 - `.rdd.yml` — for `legacy.source`, `legacy.stack`, `artifacts_dir`, and `conventions.business_rule_prefix`
 - `{artifacts_dir}/TARGET.md` — for chosen conventions, error format, multi-tenancy boundary
-- `{artifacts_dir}/MAP.md` — to confirm the module exists and read prior notes about it
+- `{artifacts_dir}/MAP.md` — to confirm the module exists, read prior notes about it, and look up its **`Seq`** (sequence number from the Modules table)
 
-If the user invoked the skill without specifying a module name, list modules from `MAP.md` and ask which.
+If the user invoked the skill without a module name, fall through to **batch mode** (spec all modules sequentially in Seq order). Don't stop to ask — batch mode is the documented default for no-arg invocation.
+
+### 1.5. Resolve module directory
+
+Module artifacts live at `{artifacts_dir}/<Seq>_<module>/` (e.g., `rdd/005_foundation/`). This skill is responsible for **creating that directory** when it doesn't exist yet — `/rdd-map-codebase-02` only records `Seq` in `MAP.md`.
+
+**Resolution rules:**
+
+1. The user can invoke with any of three forms — all must resolve to the same directory:
+   - Bare module name — `/rdd-specify-03 reports`
+   - Pre-prefixed — `/rdd-specify-03 005_reports`
+   - Seq only — `/rdd-specify-03 005`
+2. Parse the input:
+   - Matches `^[0-9]{3}$` → Seq-only. Look up MAP.md's Modules table for the row with this `Seq`; the module name comes from there.
+   - Matches `^[0-9]{3}_(.+)$` → Pre-prefixed. The first 3 digits are the `Seq`; the suffix is the module name.
+   - Otherwise → bare name. Look up MAP.md's Modules table for the row with this module name; `Seq` comes from there.
+   If the lookup fails (Seq or name not in MAP), stop — instruct the user to re-run `/rdd-map-codebase-02`.
+3. **Glob for an existing directory** matching `{artifacts_dir}/[0-9][0-9][0-9]_<module>/`. Three cases:
+   - **Exactly one match** — use it. If the directory's `Seq` prefix differs from MAP's `Seq`, surface the discrepancy and ask the user whether to rename (`git mv`) or update MAP.
+   - **No match** — directory doesn't exist yet. Create `{artifacts_dir}/<Seq>_<module>/` using the `Seq` from MAP.
+   - **Multiple matches** — should not happen; a module name is unique. Stop and surface the conflict for the user to resolve.
+4. The resolved path becomes `module_dir` for the rest of the procedure. Anywhere this skill previously wrote to `{artifacts_dir}/{module}/SPEC.md`, it now writes to `{module_dir}/SPEC.md`.
+
+**Backward compatibility:** if MAP.md has no `Seq` column (legacy MAP from a prior plugin version), use the bare module name (`{artifacts_dir}/{module}/`) and emit a one-line warning suggesting the user re-run `/rdd-map-codebase-02` to assign sequence numbers.
 
 ### 2. Validate inputs (pre-flight)
 
@@ -101,27 +128,29 @@ Example: *"Channel handle derived from email prefix — what if two users share 
 
 **Output of this step:** a list of unmapped consequences. Each is either:
 
-- **Resolved by reading more code** (the code does handle it, you just hadn't found it yet) — fold into a BR
-- **Implicit but unaddressed** (legacy code happens to work but no rule states it) — escalate as a question for the user
-- **Genuine gap** (legacy bug or missing handling) — escalate; user decides whether to preserve (parity) or fix (intentional deviation)
+- **Resolved by reading more code** (the code does handle it, you just hadn't found it yet) — fold into a BR with the code citation
+- **Implicit but unaddressed** (legacy code happens to work but no rule states it) — record as an entry in the **Open questions** section of `SPEC.md`, written so the user can answer in one line
+- **Genuine gap** (legacy bug or missing handling) — record as an entry in **Open questions**; default assumption is parity (legacy is the truth) and you note that as the recommendation for that question
 
 Don't enumerate every possible edge case exhaustively — simulate realistic execution paths and flag what no document currently addresses.
 
-### 5. Interview the user (mandatory)
+### 5. Draft `SPEC.md` incrementally
 
-Code never tells the whole story. Ask about:
+Create `{module_dir}/spec/SPEC.md` (the `module_dir` resolved in step 1.5, plus a `spec/` subdirectory — e.g., `{artifacts_dir}/005_reports/spec/SPEC.md`) using `templates/SPEC.md`. **Write incrementally** — don't try to one-shot a long file. Append section by section: Domain → Use cases → API surface → Business rules → Error Catalog → Side effects → Out of scope → Open questions → Intentional deviations.
 
-- **Tribal rules** — undocumented constraints (e.g., "we never charge twice on the same day", "company X gets 5% extra discount")
-- **Recent incidents** — bugs fixed in this module recently; the test plan must cover them
-- **Intentional behavior changes** — does the user want to keep a legacy bug or fix it during migration? **Default: keep it.** Deviations are marked.
-- **Out-of-scope items** — explicitly list so the migration doesn't grow
-- **Unmapped consequences from step 4** — present each unresolved item; user decides
+The module directory follows this layout (full structure documented in `templates/PROGRESS.md`):
 
-Keep tight. 5–10 focused questions, not open-ended survey.
+```
+{module_dir}/
+├── PROGRESS.md              ← created in step 7 below
+├── spec/
+│   ├── SPEC.md              ← this step writes here
+│   └── TESTS.md             ← created later by /rdd-refactor-04
+├── tasks/                   ← created later by /rdd-refactor-04 (port phase)
+└── improve/                 ← created later by /rdd-improve-05 (lazy, optional)
+```
 
-### 6. Draft `SPEC.md` incrementally
-
-Create `{artifacts_dir}/{module}/SPEC.md` using `templates/SPEC.md`. **Write incrementally** — don't try to one-shot a long file. Append section by section: Domain → Use cases → API surface → Business rules → Error Catalog → Side effects → Out of scope → Open questions → Intentional deviations.
+Create the `spec/` subdirectory if it doesn't exist.
 
 Sections:
 
@@ -194,19 +223,39 @@ Things you couldn't determine and need resolution before `/rdd-refactor-04`.
 
 Empty by default — parity is the rule. Filled only when the user explicitly approves a deviation.
 
-### 7. Resolve `[DECIDE]` markers
+### 6. Resolve gaps without asking
 
-If during drafting you couldn't pin a detail, insert an inline `[DECIDE: option A | option B — context]` marker and continue. After the draft is complete, present each marker to the user via `AskUserQuestion` (up to 4 per call; sequential calls if more). Apply answers with targeted `Edit`s.
+When you can't pin a detail during drafting, **do not** stop and ask the user. Two paths:
 
-### 8. Hand-off
+- **Pick the parity-default** and keep going. If the legacy code does X under condition Y, write the BR as "BR-NN — under Y, system does X. `(code: path:line)`". Default for ambiguous behavior: whatever the legacy currently does is the rule.
+- **If even the parity behavior is ambiguous** (e.g., the code path is unreachable, or two branches contradict), record an entry under **Open questions** describing the ambiguity, the options, and your recommended default. The user resolves later by editing `SPEC.md` or re-running this skill.
+
+This is the autonomy contract: the skill produces a complete spec from code-as-truth + simulation, with gaps surfaced explicitly under Open questions. The user reviews `SPEC.md`, edits inline, and moves on. No mid-spec dialog.
+
+### 7. Initialize `PROGRESS.md` and hand off
+
+After `spec/SPEC.md` is fully drafted, create `{module_dir}/PROGRESS.md` from `templates/PROGRESS.md` if it doesn't exist yet. Fill in:
+
+- Module Seq + name in the title
+- Set the `spec` row of the Pipeline table to `✅` with detail (BR count, error count, open questions count)
+- Capture upstream gate state: read MAP.md's `Depends on` column; for each upstream, write a row with status (`✅ completed` / `🔄 in_progress` / `⬜ pending` / `⏭ skipped`) by checking `{artifacts_dir}/<upstream_Seq>_<upstream>/PROGRESS.md` (or fall back to `REFACTOR.progress.md` for backward compat)
+- Append one history line: `<timestamp> — /rdd-specify-03 — spec phase completed: N BRs, M errors, K open questions`
+
+If `PROGRESS.md` already exists (re-run on a module that was previously specced), don't overwrite — only update the spec row and append the new history line.
+
+**Validate dependency readiness:** read each upstream's `PROGRESS.md`. If any upstream's port is not `completed` and the module isn't `skipped:` in `.rdd.yml`, the hand-off message warns that `/rdd-refactor-04` will block at the upstream gate.
 
 Tell the user:
 
-- Path to `SPEC.md`
+- Path to `spec/SPEC.md` (`{module_dir}/spec/SPEC.md`)
+- Path to `PROGRESS.md` (`{module_dir}/PROGRESS.md`)
 - Number of business rules captured
 - Number of errors in Error Catalog
 - Any open questions still pending
-- Next step: `/rdd-refactor-04 {module}`
+- **If all upstream deps have completed ports:** Next step: `/rdd-refactor-04 {module}` — ready to start.
+- **If some upstream deps are not yet ported:** Next step: complete `/rdd-refactor-04 <upstream>` first. List the pending upstreams (`<Seq>_<name>`) so the user can plan. The Phase 0 gate in `/rdd-refactor-04 {module}` will enforce this — bypass requires marking those upstreams `skipped:` in `.rdd.yml`.
+
+If the resolved `Seq` for this module conflicts with the dependencies' `Seq` (e.g., this module is `010` but depends on `015`), also warn — the topological order is wrong and the user should re-run `/rdd-map-codebase-02` to renumber.
 
 ## Quality bar for business rules
 
@@ -216,8 +265,8 @@ A good BR is testable, sourced, and specific. Each maps to at least one upcoming
 
 - **Don't describe implementation** — internal class structure, ORM choice, framework decorators. The spec is about what callers and the database see.
 - **Don't smooth over bugs** — if legacy returns 200 instead of 422 for invalid input, write that down. Migration locks current behavior; bug fixes are separate, marked changes.
-- **Don't make rules up.** Every rule traces to code, user statement, or explicit decision. Speculation goes to "Open questions".
-- **Don't skip the user interview.** Code-only specs miss tribal knowledge.
+- **Don't make rules up.** Every rule traces to code or to an explicit Open question. Speculation goes to "Open questions" with a recommended default.
+- **Don't ask the user mid-spec.** Code is the source of truth; simulation finds gaps; gaps go to Open questions. The user resolves by editing `SPEC.md` after, not during. The single interactive step in the whole pipeline is `/rdd-specify-01` (architecture).
 - **Don't skip step 4 (simulation).** Static reading misses concurrency and edge cases the code happens to handle but no document captures.
 - **Don't write Error Catalog from imagination.** Codes come from grep'ing the legacy code for what it actually emits.
 
@@ -248,7 +297,9 @@ If validation fails, stop — don't start the autopilot.
 
 ### B2. Read MAP.md and extract module list
 
-Parse MAP.md for the module table. Capture per module: name, entry-point count, source path hint, wave. If MAP.md is missing or empty, instruct the user to run `/rdd-map-codebase-02` first.
+Parse MAP.md for the module table. Capture per module: **`Seq`**, name, entry-point count, source path hint, wave. If MAP.md is missing or empty, instruct the user to run `/rdd-map-codebase-02` first. If MAP.md has no `Seq` column (legacy from prior plugin version), instruct the user to re-run `/rdd-map-codebase-02` to add sequence numbers — batch mode requires `Seq` to know the iteration order.
+
+**Iterate modules in ascending `Seq` order** — the lowest `Seq` (e.g., `005_<module>`) is processed first. This guarantees that when a module's spec is being written, its upstreams have either already been specced earlier in the same batch run or were declared dependencies in MAP.
 
 ### B3. Read or create the progress file
 
@@ -264,57 +315,44 @@ Parse MAP.md for the module table. Capture per module: name, entry-point count, 
 
 ## Modules
 
-### 00_foundation
+### 005_foundation
 - **Status:** completed | in_progress | pending | failed
-- **SPEC.md:** rdd/00_foundation/SPEC.md
+- **SPEC.md:** rdd/005_foundation/spec/SPEC.md
+- **PROGRESS.md:** rdd/005_foundation/PROGRESS.md
 - **BRs:** 8  •  **Errors:** 3  •  **Open questions:** 2
 - **Notes:** —
 
-### ai-router
+### 010_ai-router
 - **Status:** pending
 - (filled when started)
 
-(... one entry per module from MAP.md, in MAP wave order)
+(... one entry per module from MAP.md, in ascending Seq order — heading uses <Seq>_<module>)
 ```
 
 **On invocation:**
 
-- If the file does not exist, create it with one entry per module in MAP order, all with `Status: pending`. The user is starting fresh.
+- If the file does not exist, create it with one entry per module in **ascending `Seq` order**, all with `Status: pending`. Each module heading uses `<Seq>_<module>` (e.g., `### 005_foundation`). The user is starting fresh.
 - If the file exists, read it. Identify modules with `Status: completed` (skip these), `Status: failed` (skip — user must retry individually), and `Status: pending` or `Status: in_progress` (work to do).
 - If a module is `in_progress` from a prior session that died mid-spec, treat as `pending` — the prior partial work may need to be redone. Tell the user: *"Found `<module>` in_progress from a prior session — the SPEC.md may be partial. I'll redo it."*
 
-### B4. Confirm plan with the user (once)
+### B4. Announce the plan and proceed (no confirmation)
 
-If starting fresh, tell the user:
+Print a single status line so the user knows what's happening, then start the loop. Do not block on confirmation — the user invoked the skill, and progress is durable on disk (`BATCH_SPEC.progress.md`) so they can pause by closing the session.
 
-```
-Batch spec — sequential autopilot.
-- N modules to spec, in MAP order:
-  Wave 0: <modules>
-  Wave 1: <modules>
-  ...
-- Each module: read code, simulate execution, draft SPEC.md, mark complete in BATCH_SPEC.progress.md, continue.
-- User interview is deferred — open questions go into each SPEC.md's "Open questions" section.
-- I will not stop between modules. If you need to pause, close the session — progress is persisted.
-
-Estimated time: X minutes (rough — bigger modules take longer).
-Continue?
-```
-
-Wait for confirmation.
-
-If resuming, tell the user:
+If starting fresh:
 
 ```
-Resuming batch spec — M of N modules already done.
-- Completed: <list, count only if many>
-- Skipping (previously failed): <list>
-- Remaining to spec: <list>
-
-Continue from `<next pending module>`?
+Batch spec — N modules in Seq order: 005_foundation, 010_ai-router, 015_<...>, ...
+Each module: read code, simulate, draft SPEC.md with Open questions for unresolved items. No prompts between modules.
 ```
 
-Wait for confirmation.
+If resuming:
+
+```
+Resuming batch spec from <next pending module> — M of N modules already done.
+```
+
+Then proceed directly to B5.
 
 ### B5. The autopilot loop — one subagent per module
 
@@ -325,18 +363,20 @@ This is a deliberate context-engineering choice. If the main agent did the work 
 **For each pending module, do this in order:**
 
 1. **Mark `in_progress`** in `BATCH_SPEC.progress.md`. Update the timestamp.
-2. **Dispatch one general-purpose subagent.** The agent has no prior conversation context — its prompt must be fully self-contained. Use this template (substituting `<module_name>`, source paths, and counts from MAP.md):
+2. **Dispatch one general-purpose subagent.** The agent has no prior conversation context — its prompt must be fully self-contained. Use this template (substituting `<module_name>`, `<seq>` (3-digit, zero-padded), source paths, and counts from MAP.md):
 
    ```
    You are running step "spec one module" as part of an RDD batch autopilot. The main agent has dispatched you with a self-contained prompt — you have no prior conversation context.
 
    Module: <module_name>
+   Sequence number (Seq): <seq>            # e.g., 005
+   Module directory: <artifacts_dir>/<seq>_<module_name>/    # e.g., rdd/005_foundation/
    Module's legacy source files: <comma-separated list or directory hint from MAP.md>
    Module's MAP.md entry-point count: <count>
 
    Read first (in this order):
    1. <artifacts_dir>/TARGET.md — for chosen conventions, error format, multi-tenancy boundary
-   2. <artifacts_dir>/MAP.md — for context on how this module fits in the migration
+   2. <artifacts_dir>/MAP.md — for context on how this module fits in the migration; note the Depends on column for this module
    3. The plugin's templates/SPEC.md for the artifact structure (path: <plugin_dir>/templates/SPEC.md)
 
    Then perform these steps from the rdd-specify-03 single-module procedure:
@@ -350,14 +390,20 @@ This is a deliberate context-engineering choice. If the main agent did the work 
    - Anything no document addresses → record as an entry in the SPEC.md's "Open questions" section
    - This step is yours to do — do not delegate it further
 
-   Step 6 — Draft SPEC.md incrementally:
-   - Write to: <artifacts_dir>/<module_name>/SPEC.md (create the directory if missing)
+   Step 5 — Draft SPEC.md incrementally:
+   - Write to: <artifacts_dir>/<seq>_<module_name>/spec/SPEC.md (create the spec/ subdirectory if missing)
    - Follow templates/SPEC.md structure exactly: Domain, Use cases, API surface, Business rules (numbered BR-NN), Error Catalog (SCREAMING_SNAKE_CASE codes), Side effects, Out of scope, Open questions, Intentional deviations from legacy
    - Append section by section, not in one giant Write
 
+   Step 6 — Initialize PROGRESS.md:
+   - If <artifacts_dir>/<seq>_<module_name>/PROGRESS.md doesn't exist, create it from templates/PROGRESS.md
+   - Set the spec phase row to ✅ with BR/error/OQ counts
+   - Capture upstream gate from MAP.md's Depends on column for this module
+   - Append a history line with timestamp + skill name + event
+
    Forbidden:
-   - Do NOT use AskUserQuestion. The user interview is deferred to a later session.
-   - Do NOT skip the Open questions section — every unmapped consequence and every tribal-knowledge gap goes there.
+   - Do NOT use AskUserQuestion. This skill is autonomous — gaps go under Open questions in SPEC.md, not into a dialog.
+   - Do NOT skip the Open questions section — every unmapped consequence and every tribal-knowledge gap goes there with a recommended default (parity-first).
    - Do NOT spec a different module. You are dispatched for <module_name> only.
    - Do NOT modify TARGET.md, MAP.md, .rdd.yml, or any other module's SPEC.md.
    - Do NOT spawn additional sub-agents (no nested delegation).
@@ -365,10 +411,10 @@ This is a deliberate context-engineering choice. If the main agent did the work 
    For very large modules (>2000 lines), use Glob/Grep/Read efficiently — read entry points first, then dive into imports as needed. Do not read every file in the legacy source if it's not imported by this module.
 
    Return as your final message a single one-line summary in this exact format:
-   <module_name>: <BR_count> BRs, <error_count> errors in catalog, <open_question_count> open questions. SPEC.md at <artifacts_dir>/<module_name>/SPEC.md.
+   <seq>_<module_name>: <BR_count> BRs, <error_count> errors in catalog, <open_question_count> open questions. spec/SPEC.md + PROGRESS.md at <artifacts_dir>/<seq>_<module_name>/.
 
    If you fail (legacy code unreadable, ambiguity blocking work), return instead:
-   <module_name>: FAILED — <one-line reason>
+   <seq>_<module_name>: FAILED — <one-line reason>
    ```
 
 3. **Wait for the subagent to complete.** Do not dispatch the next module until this one returns.
@@ -377,11 +423,11 @@ This is a deliberate context-engineering choice. If the main agent did the work 
    - On `FAILED`: mark `failed` with the reason; **continue the loop** — failures are isolated per module
 5. **Briefly emit progress to chat** (one line, exactly what the subagent returned, prefixed with status):
    ```
-   ✅ <module> — <N> BRs, <M> errors, <K> open questions  (<X>/<Y> complete)
+   ✅ <seq>_<module> — <N> BRs, <M> errors, <K> open questions  (<X>/<Y> complete)
    ```
    or for failures:
    ```
-   ❌ <module> — failed: <reason>  (<X>/<Y> complete)
+   ❌ <seq>_<module> — failed: <reason>  (<X>/<Y> complete)
    ```
 6. **Continue to the next pending module.** Do NOT stop, do NOT ask for confirmation between modules — the user opted into autopilot.
 
@@ -399,23 +445,23 @@ When the loop finishes:
 ```
 Batch spec complete — <X>/<Y> modules specced (<Z> failed).
 
-| Module          | Status     | BRs | Errors | Open questions |
-|-----------------|------------|-----|--------|----------------|
-| 00_foundation   | ✅ done    |   8 |      3 |              2 |
-| ai-router       | ✅ done    |  12 |      4 |              5 |
-| whatsapp-channel| ❌ failed  |   — |      — | (see notes)    |
+| Module               | Status     | BRs | Errors | Open questions |
+|----------------------|------------|-----|--------|----------------|
+| 005_foundation       | ✅ done    |   8 |      3 |              2 |
+| 010_ai-router        | ✅ done    |  12 |      4 |              5 |
+| 015_whatsapp-channel | ❌ failed  |   — |      — | (see notes)    |
 | ...
 
 Failed modules (retry individually):
-- whatsapp-channel — <reason>
+- 015_whatsapp-channel — <reason>
 
 Total open questions: <M>
 
 Next steps:
-- Resolve open questions per-module — `/rdd-status` shows which need attention
-- Run `/rdd-specify-03 <module>` in single mode to interview tribal knowledge, or edit SPEC.md directly
+- Review SPEC.md per-module — Open questions list whatever the code couldn't resolve, with a parity-first recommended default for each
+- Edit SPEC.md to answer open questions inline, or re-run `/rdd-specify-03 <module>` after the legacy code changes
 - Retry any failed modules: `/rdd-specify-03 <failed-module>`
-- When ready, start `/rdd-refactor-04` on the first module of Wave 0
+- When ready, start `/rdd-refactor-04` on the lowest-Seq module (Phase 0 enforces upstream-port-completed gates)
 ```
 
 Mark `BATCH_SPEC.progress.md` `Status: completed` (even if some modules failed — the autopilot ran to its end; failures are recorded per module for retry).
@@ -437,8 +483,7 @@ If a session dies mid-batch, `/rdd-status` and the progress file together tell y
 - **Don't accumulate per-module summaries in main-agent context as long-form prose.** A single line per module (`<module>: N BRs, M errors, K open questions`) is enough — the durable record is in `BATCH_SPEC.progress.md` and the per-module SPEC.md files.
 - **Don't STOP between modules in batch mode.** If the user wants per-module review, they use single mode. Stopping defeats autopilot.
 - **Don't use AskUserQuestion in batch mode** (main agent OR subagent). Every question becomes an Open question in the SPEC.md.
-- **Don't dispatch the autopilot without user confirmation** of the plan.
-- **Don't ask the user N questions.** That's the whole reason batch mode exists.
+- **Don't ask the user N questions.** Single mode and batch mode are both autonomous — Open questions in `SPEC.md` is the only channel for unresolved items.
 - **Don't try to merge specs across modules.** Each `SPEC.md` is independent.
 - **Don't skip validation pre-flight.** A missing `TARGET.md` decision affects every module — catch it once, not N times.
 - **Don't run batch on a project with 1–3 modules.** Single mode is faster end-to-end at that scale (no subagent dispatch overhead).
@@ -450,9 +495,7 @@ If a session dies mid-batch, `/rdd-status` and the progress file together tell y
 
 | Situation | Mode |
 |-----------|------|
-| <4 modules in MAP.md | Single (autopilot overhead isn't worth it) |
-| 4+ modules, want hands-off drafts with resumability | **Batch (sequential autopilot)** |
-| Resolving open questions on an existing SPEC.md | Single (interview step is the value) |
-| Module has high domain complexity / lots of tribal knowledge | Single (interview catches what code doesn't say) |
-| Routine CRUD modules | Batch — they're code-readable, few tribal rules |
-| Resuming after a session died mid-run | Batch — re-invoke and it picks up where the progress file left off |
+| <4 modules in MAP.md | Single (per-module invocation; autopilot orchestration overhead isn't worth it) |
+| 4+ modules, fresh start | **Batch (sequential autopilot)** |
+| Re-spec a single module after the user edited Open questions or legacy changed | Single |
+| Resuming after a session died mid-batch | Batch — re-invoke and it picks up where the progress file left off |

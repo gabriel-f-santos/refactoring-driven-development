@@ -11,12 +11,16 @@
 
 ## Modules
 
-| Module | Entry points | Domain summary | Complexity | Risk | Depends on |
-|--------|--------------|----------------|------------|------|------------|
-| `products` | 12 | CRUD over product catalog, with search and price history | M | Low | — |
-| `sales` | 18 | Sale creation, refund, listing; commission triggers | L | High | `products`, `customers` |
-| `appointments` | 9 | Calendar with conflict detection and Google Calendar sync | M | Medium | `customers` |
-| ... | | | | | |
+> `Seq` is the migration sequence number (3-digit, zero-padded, gaps of 5). Module directories created by `/rdd-specify-03` will be named `<Seq>_<module>/` (e.g., `005_foundation/`). Downstream skills enforce upstream-port-completed gates against this order.
+
+| Seq | Module | Entry points | Domain summary | Complexity | Risk | Depends on |
+|-----|--------|--------------|----------------|------------|------|------------|
+| 005 | `foundation` | n/a | Skeleton, auth, multi-tenancy guard, observability | XL | High | — |
+| 010 | `products` | 12 | CRUD over product catalog, with search and price history | M | Low | `foundation` |
+| 015 | `customers` | 8 | CRUD over customers, with contact enrichment | M | Low | `foundation` |
+| 020 | `appointments` | 9 | Calendar with conflict detection and Google Calendar sync | M | Medium | `customers` |
+| 025 | `sales` | 18 | Sale creation, refund, listing; commission triggers | L | High | `products`, `customers` |
+| ... | | | | | | |
 
 Complexity: S (≤5 entry points, simple), M (5–15), L (15–30), XL (>30 or transactional core)
 Risk: low (read-only / isolated), medium (writes + side effects), high (transactional + integrations + auth)
@@ -30,17 +34,17 @@ Risk: low (read-only / isolated), medium (writes + side effects), high (transact
 
 ## Migration order
 
-| Wave | Modules | Why this wave |
-|------|---------|---------------|
-| 0 — Setup | (no module) Monorepo, JWT validation against legacy auth, observability | Foundation for all subsequent migrations |
-| 1 — Read-only | `dashboard`, `analytics` | No writes; rollback is trivial |
-| 2 — Simple CRUD | `products`, `customers`, `suppliers` | Isolated writes, simple rules |
-| 3 — CRUD with side effects | `appointments`, `stock_movements`, `commissions` | Writes that trigger external sync or calculations |
-| 4 — Transactional | `sales`, `quotes`, `payables`, `receivables` | Multi-table writes, business rules core |
-| 5 — External integrations | `payments`, `shipping` | Webhooks, idempotency-critical |
-| 6 — AI / streaming | `chat`, `agents` | Stateful, streaming, cost-sensitive |
-| 7 — Admin | `admin` | Low traffic, can wait |
-| 8 — Auth | (cross-cutting) | Highest blast radius if it breaks |
+| Wave | Seq range | Modules | Why this wave |
+|------|-----------|---------|---------------|
+| 0 — Setup | 005 | `foundation` | Skeleton, JWT validation, observability — foundation for all subsequent migrations |
+| 1 — Read-only | 010–015 | `products`, `customers` (read paths first) | No writes; rollback is trivial |
+| 2 — Simple CRUD | 020–030 | `customers` (writes), `suppliers` | Isolated writes, simple rules |
+| 3 — CRUD with side effects | 035–045 | `appointments`, `stock_movements`, `commissions` | Writes that trigger external sync or calculations |
+| 4 — Transactional | 050–060 | `sales`, `quotes`, `payables`, `receivables` | Multi-table writes, business rules core |
+| 5 — External integrations | 065–070 | `payments`, `shipping` | Webhooks, idempotency-critical |
+| 6 — AI / streaming | 075–080 | `chat`, `agents` | Stateful, streaming, cost-sensitive |
+| 7 — Admin | 085 | `admin` | Low traffic, can wait |
+| 8 — Auth | 090 | (cross-cutting) | Highest blast radius if it breaks |
 
 ## Open questions
 
@@ -49,4 +53,4 @@ Risk: low (read-only / isolated), medium (writes + side effects), high (transact
 
 ## Next step
 
-Pick the first module from Wave 1 or 2 and run `/rdd-specify-03 <module>`.
+Run `/rdd-specify-03 <module>` on the lowest-`Seq` module (or `/rdd-specify-03` with no argument for sequential batch autopilot across all modules in `Seq` order).

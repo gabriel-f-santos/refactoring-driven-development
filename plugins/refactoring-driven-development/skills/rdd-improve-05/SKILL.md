@@ -1,6 +1,6 @@
 ---
 name: rdd-improve-05
-description: Use this skill after rdd-refactor-04 to refactor a parity-correct module for idiomatic style and quality, with the existing characterization tests as a parity safety net. Fifth (optional) step in the RDD pipeline (per-module). Triggers on "improve X", "refactor X for style", "clean up X after refactoring", "make X idiomatic". Produces idiomatic code + IMPROVE.progress.md, tests stay green throughout.
+description: Use this skill after rdd-refactor-04 to refactor a parity-correct module for idiomatic style and quality, with the existing characterization tests as a parity safety net. Fifth (optional) step in the RDD pipeline (per-module). Triggers on "improve X", "refactor X for style", "clean up X after refactoring", "make X idiomatic". Produces idiomatic code + improve/IMPROVE.md + improve/NN_&lt;name&gt;.md per refactor, updates the module's PROGRESS.md; tests stay green throughout.
 ---
 
 # rdd-improve-05 — Idiomatic refactor with parity safety net
@@ -9,12 +9,11 @@ You are improving the **internal quality** of a module that was ported with pari
 
 This skill runs **after** the module has been ported and parity is verified. It does not run on legacy code, and it does not run on code that hasn't been characterized — without the tests there is no safety net, and "refactoring" becomes "rewriting from memory".
 
----
+This skill runs **autonomously**. After pre-flight passes (and the upstream-port gate is satisfied), the skill identifies refactors, applies them in risk order (low → high), and proceeds — no per-refactor confirmation prompts. The safety net is the test suite: a refactor that breaks tests is reverted automatically (parity-first default). The skill stops only when it cannot continue:
 
-## Modes
-
-- **Default (pause)**: stop after each refactor unit, emit a completion line, ask `Continuar para R-N+1?`, and **wait** for the user's reply in a new turn.
-- **Continuous (autopilot)**: only when the user **explicitly** requested it at session start. When unsure, default to pause.
+- **Pre-flight fails** (port not complete, tests not green at start, dirty branch, upstream gate blocked) — hard fail, exit
+- **Fix-loop exhausts 3 attempts** on the same refactor — automatic revert, log the attempt, continue with the next refactor
+- **Final verification fails after 3 fix attempts** — hard fail, exit
 
 ---
 
@@ -23,50 +22,41 @@ This skill runs **after** the module has been ported and parity is verified. It 
 The user invokes the skill with a module name (e.g., "/rdd-improve-05 products"). Resolve:
 
 - `{artifacts_dir}/TARGET.md` — for chosen conventions
-- `{artifacts_dir}/{module}/SPEC.md` — for the contract that must remain honored
-- `{artifacts_dir}/{module}/TESTS.md` — for the test plan
-- `{artifacts_dir}/{module}/REFACTOR.progress.md` — must show `Status: completed`. If not, instruct the user to finish the port first.
+- `{artifacts_dir}/MAP.md` — to look up the module's **`Seq`** and find its `module_dir`
+- `{module_dir}/spec/SPEC.md` — for the contract that must remain honored. `module_dir` is `{artifacts_dir}/<Seq>_<module>/` (e.g., `rdd/010_products/`); accept either bare name or prefixed form as input.
+- `{module_dir}/spec/TESTS.md` — for the test plan
+- `{module_dir}/PROGRESS.md` — must show pipeline `port` row as `✅ completed` and `final` row as `✅ completed`. If not, instruct the user to finish the port first.
 - The new code under `target.source` for this module
+
+### Module directory resolution
+
+Same three-form input as `/rdd-specify-03` and `/rdd-refactor-04`: bare name (`products`), prefixed (`010_products`), or Seq only (`010`). Glob `{artifacts_dir}/[0-9][0-9][0-9]_<module>/` to resolve, expect exactly one match (the directory was created by `/rdd-specify-03` and populated by `/rdd-refactor-04`). Backward compat: legacy flat layout accepted with a one-line warning.
 
 ---
 
-## Progress file
+## Module layout (this skill writes here)
 
-`{artifacts_dir}/{module}/IMPROVE.progress.md`:
-
-```markdown
-# {module} — Improve Progress
-
-**Status:** in_progress | completed
-**Phase:** preflight | identify | refactor | final_verification | done
-**Refactors:** X/Y completed
-
-## Phases
-
-### preflight
-- **Status:** completed | pending
-- **Tests green at start:** Y/Y on new
-
-### identify
-- **Status:** completed | pending
-- **IMPROVE.md generated:** rdd/{module}/IMPROVE.md
-- **Refactors planned:** N
-
-### refactor
-
-#### R-1: <name>
-- **Status:** completed | reverted | pending
-- **Tests after:** Y/Y on new
-- **Notes:** what changed, any observations
-
-(repeat per refactor)
-
-### final_verification
-- **Status:** completed | pending
-- **Full suite:** pass | fail
-- **Type check:** pass | fail
-- **Build:** pass | fail
 ```
+{module_dir}/
+├── PROGRESS.md          ← updated continuously: improve pipeline row, refactors table, history
+├── spec/                ← read-only here
+├── tasks/               ← read-only here (port artifacts)
+└── improve/             ← created lazily on first run of this skill
+    ├── IMPROVE.md       ← Phase 1 output (refactor plan)
+    ├── 01_<name>.md     ← Phase 2 output (one file per refactor unit)
+    ├── 02_<name>.md
+    └── ...
+```
+
+Per-refactor files use `templates/task.md` shape (status, source/target, tests, observations) — the same template `/rdd-refactor-04` uses for port tasks. The numeric prefix is the order of application (low-risk first).
+
+---
+
+## Progress
+
+This skill updates `{module_dir}/PROGRESS.md` (the same aggregate file `/rdd-refactor-04` writes to). The Pipeline table's `improve` row goes from `⬜` → `🔄 in_progress` → `✅ completed`. The Improve refactors table is populated as Phase 1 plans them and updated as each is applied/reverted. Per-refactor detail (test counts, observations, fix-loop attempts) lives in `improve/NN_<name>.md`.
+
+There is no separate `IMPROVE.progress.md` — `PROGRESS.md` is the single source of truth.
 
 ---
 
@@ -76,13 +66,19 @@ The user invokes the skill with a module name (e.g., "/rdd-improve-05 products")
 
 Before suggesting a single refactor:
 
-1. **Port phase complete.** `REFACTOR.progress.md` shows `Status: completed` and `final_verification` passed. If not, **stop** and instruct the user to finish `/rdd-refactor-04 {module}` first.
-2. **Tests green now.** Run all tests for this module against `TEST_TARGET=new`. They must all pass before you start. If any fail, **stop** — the safety net has a hole; user must fix before improving.
-3. **Branch check.** `git status` clean (or only changes inside the module's scope); current branch is not `main` / default.
-4. **Resume check.** Look for `IMPROVE.progress.md`. If found, resume from the right refactor. Tell the user: *"Found progress file: refactor R-N of M completed. Resuming from R-N+1."*
-5. **Mode check.** Did the user request continuous mode? Default = pause.
+1. **This module's port complete.** `{module_dir}/PROGRESS.md` shows pipeline `port` row as `✅ completed` AND `final` row as `✅ completed`. If not, **stop** and instruct the user to finish `/rdd-refactor-04 {module}` first.
+2. **Upstream-port gate (HARD BLOCK).** Same gate as `/rdd-refactor-04` Phase 0. Improve cannot run while any upstream module's port is incomplete and not explicitly skipped — refactoring against an incomplete dependency tree wastes work, since interfaces may shift when upstreams land.
 
-If preflight passes, create or update `IMPROVE.progress.md`. Create the persistent task list with `TaskCreate` (one task per refactor unit, plus identify and final_verification).
+   Read `MAP.md`, get `current_seq`. For every directory `{artifacts_dir}/[0-9][0-9][0-9]_*/` with prefix `< current_seq`:
+   - **OK** if it has `PROGRESS.md` with pipeline `port` row marked `✅ completed`
+   - **OK** if `.rdd.yml` lists the module under `skipped:` (schema documented in `/rdd-refactor-04` Phase 0)
+   - **NOT OK** otherwise — emit the same structured error as `/rdd-refactor-04`, listing pending upstreams, and **stop**.
+
+3. **Tests green now.** Run all tests for this module against `TEST_TARGET=new`. They must all pass before you start. If any fail, **stop** — the safety net has a hole; user must fix before improving.
+4. **Branch check.** `git status` clean (or only changes inside the module's scope); current branch is not `main` / default.
+5. **Resume check.** Read the Improve refactors table in `PROGRESS.md`. If any rows are `🔄 in_progress` or `⬜ pending`, resume from the lowest-numbered pending. Print one line: *"Resuming from refactor `NN_<name>`, M of Total complete."* Then proceed.
+
+If preflight passes, set the pipeline `improve` row in `PROGRESS.md` to `🔄 in_progress`. Create the `improve/` subdirectory if it doesn't exist. Create the persistent task list with `TaskCreate` (one task per refactor unit named like the file — `Improve: <refactor-name>` — plus `Identify refactors` and `Final verification`).
 
 ### Phase 1 — Identify improvements
 
@@ -104,21 +100,23 @@ For each candidate refactor, classify by **risk**:
 
 Order: low risk first, high risk last. High-risk refactors should be small enough to revert if they break a test.
 
-**Write `{artifacts_dir}/{module}/IMPROVE.md`** using `templates/IMPROVE.md`. List each refactor with ID (R-NN), description, risk, expected benefit, scope (which files), and parity assertion (which tests must remain green).
+**Write `{module_dir}/improve/IMPROVE.md`** using `templates/IMPROVE.md`. List each refactor with name (used as the file prefix `NN_<name>.md`), description, risk, expected benefit, scope (which files), and parity assertion (which tests must remain green). Order by risk, low → high; the order determines the `NN` prefix.
 
-The user reviews `IMPROVE.md` before you apply any refactor. **Wait for explicit approval** before moving to phase 2.
+Initialize the Improve refactors table in `PROGRESS.md` with one row per planned refactor (status `⬜ pending`, file path `improve/NN_<name>.md` not yet created).
+
+Print one line summarizing the plan (e.g., `"Refactors planned: 7 (5 low-risk, 2 medium-risk, 0 high-risk). Path: {module_dir}/improve/IMPROVE.md"`) and proceed directly to Phase 2. The user can intervene afterward by editing `IMPROVE.md` and re-running, or by reverting commits — but the skill does not stop to ask for approval.
 
 ### Phase 2 — Refactor loop (per refactor unit)
 
 For each refactor R-NN in order, execute these steps. **Do not batch.**
 
-#### Step 2.1 — Plan the refactor
+#### Step 2.1 — Open the refactor file
 
-Mark the refactor's task `in_progress`. Re-read R-NN in `IMPROVE.md`. Confirm the scope (files touched, expected delta). If scope grew during identify, push the larger version to a follow-up R-NN+M and keep this one small.
+Mark the refactor's `TaskCreate` entry `in_progress`. Create `{module_dir}/improve/NN_<name>.md` from `templates/task.md` (or re-open if it exists from a prior session). Re-read this refactor's section in `improve/IMPROVE.md`. Confirm the scope (files touched, expected delta). If scope grew during identify, push the larger version to a follow-up `NN+M_<name>.md` and keep this one small. Update the matching row in `PROGRESS.md`'s Improve table to `🔄 in_progress`.
 
 #### Step 2.2 — Apply the refactor
 
-Make the change. Touch only files in R-NN's scope. If a refactor "wants" to grow (changing one thing reveals another that needs changing), **stop and split** — finish the current small step, then propose a new R-NN+M.
+Make the change. Touch only files in this refactor's scope. If a refactor "wants" to grow (changing one thing reveals another that needs changing), **stop and split** — finish the current small step, then add a new `improve/NN+M_<name>.md` entry to the queue.
 
 #### Step 2.3 — Run the module's tests
 
@@ -128,32 +126,32 @@ TEST_TARGET=new <test-command for this module>
 
 Not the full project suite. Save that for final verification.
 
-#### Step 2.4 — Decide based on result
+#### Step 2.4 — Decide based on result (autonomous)
 
-**Green:** the refactor preserved observable behavior. Commit. Update `IMPROVE.progress.md`: R-NN → `completed`, record test count. Proceed to step 2.5.
+**Green:** the refactor preserved observable behavior. Commit. Finalize the refactor file (`Status: completed`, test counts, observations). Mirror the row in `PROGRESS.md`'s Improve table to `✅ completed`. Proceed to step 2.5.
 
-**Red:** the refactor changed observable behavior. Three options, in order of preference:
+**Red:** the refactor changed observable behavior. Apply the fix-loop discipline from `/rdd-refactor-04`: read error, diagnose, focused fix, re-run. Each attempt appends a one-line entry under `Fix-loop attempts` in this refactor file. **Max 3 attempts**.
 
-1. **Revert.** Undo the refactor entirely. Mark R-NN → `reverted` in progress file with reason. Move to next refactor. *(Default — preserves safety net intact.)*
-2. **Fix the refactor** (if you can do so within 3 attempts). Apply the fix-loop discipline from `/rdd-refactor-04` step 4.4: read error, diagnose, focused fix, re-run. Max 3 attempts. After 3 failures, revert.
-3. **Update the spec/tests** (rare; only if the refactor reveals that the legacy behavior the test locks is itself a bug AND the user explicitly approves changing it). This is no longer pure refactoring — it's an intentional deviation. Mark in `SPEC.md` under "Intentional deviations from legacy".
+- **Within 3 attempts the refactor turns green** → commit, finalize as `completed`, mirror to `PROGRESS.md`, proceed.
+- **After 3 attempts still red** → **revert** the refactor (`git restore` / `git reset` to before this refactor began), set the refactor file's `Status: reverted` with the failing test name and the diagnostic notes from the attempts. Mirror to `PROGRESS.md`'s Improve table as `⏭ reverted`. **Continue to the next refactor** — a single failed refactor doesn't stop the loop; it just doesn't get applied.
+
+The user reviews the `reverted` list at the end. They can re-run the skill later, hand-craft the failing refactor in a new session, or accept that it's genuinely incompatible with the safety net.
+
+The "update spec/tests to allow the refactor" path is **out of scope for autonomous mode** — it's a behavior change disguised as a refactor and requires deliberate user input. If a refactor reveals a legacy bug worth fixing, the user does that in a separate session by editing `spec/SPEC.md` first, then re-running `/rdd-refactor-04`.
 
 **Never weaken tests to make them pass.** Never `.skip`, `.only`, `xit`. Never catch and swallow errors. The whole point of `/rdd-improve-05` is the safety net — undermining it defeats the skill.
 
-#### Step 2.5 — STOP after the refactor
+#### Step 2.5 — Log progress and continue
 
-These are the **last tool calls** in default mode: `TaskUpdate` to mark this refactor `completed` (or `reverted`), update `IMPROVE.progress.md`. Then emit:
+Print one progress line using the **refactor's name** and proceed directly to step 2.1 of the next refactor:
 
 ```
-R-NN (<name>) <completed|reverted>. Tests: Y/Y on new.
-Continuar para R-NN+1?
+Refactor <name> (X/Y) <completed|reverted>. Tests: Y/Y on new.
 ```
 
-**STOP.** Wait for the user's reply.
+Example: `Refactor extract-money-vo (1/7) completed. Tests: 45/45 on new.`
 
-In continuous mode, skip the question and proceed to step 2.1 of the next refactor.
-
-When the last refactor is done, skip the question and proceed to Phase 3.
+When the last refactor is done, set the pipeline `improve` row's detail to `Y/Y refactors` (showing how many were applied vs reverted) and proceed to Phase 3.
 
 ### Phase 3 — Final verification
 
@@ -166,24 +164,34 @@ Run:
 
 Apply the 3-attempt fix-loop if anything fails. Stop and report if still failing after 3.
 
-When all green, update `IMPROVE.progress.md`: `final_verification` → `completed`, `Status` → `completed`, `Phase` → `done`.
+When all green, update `PROGRESS.md`: pipeline `improve` row → `✅ completed` with detail `applied X / reverted Y / total Z`, top-level **Status** → `improved`, **Current phase** → `done`. Append a history line `module improve complete: X applied, Y reverted, all tests green`.
 
 ---
 
 ## Completion report
 
-When the module is fully improved:
+When the module is fully improved, emit an explicit DONE marker matching `/rdd-refactor-04`'s format:
 
-- Refactors applied: X
-- Refactors reverted (and why): Y
-- Tests remained green throughout: confirmed
-- Type-check, build status
-- Any intentional deviations from legacy added during this skill (list)
+```
+✅ <Seq>_<module> IMPROVED — idiomatic refactor pass complete.
+
+  Refactors applied:  X
+  Refactors reverted: Y (see improve/*.md for diagnostic notes)
+  Tests on new:       Z/Z (green throughout)
+  Type-check:         pass
+  Build:              pass
+
+  Intentional deviations added: <count, or "none"> (see spec/SPEC.md)
+
+Next eligible improve target: <next_Seq>_<next_module>  (if /rdd-status reports any)
+Run: /rdd-improve-05 <next_module>
+(or re-run /rdd-improve-05 <module> later if more refactors are identified — improve is idempotent)
+```
 
 Next steps in the user's hands:
 
 - Re-run `/rdd-improve-05 {module}` later if more refactors are identified
-- Cutover (if not already done) — same flag flip as `/rdd-refactor-04` Phase 5
+- Cutover (if not already done) — feature flag flip is owned by the user, outside this pipeline
 
 ---
 
@@ -191,10 +199,11 @@ Next steps in the user's hands:
 
 - **Don't refactor without the safety net.** If `/rdd-refactor-04` isn't complete, do not run this skill.
 - **Don't grow refactors mid-application.** Small steps that revert cleanly are the whole point.
-- **Don't disable tests to "make them pass after refactoring".** A failing test means the refactor changed behavior — revert or document deviation.
+- **Don't disable tests to "make them pass after refactoring".** A failing test means the refactor changed behavior — revert it.
 - **Don't refactor the test code while refactoring the production code.** Two separate sessions if you must.
 - **Don't push high-risk refactors first.** Order by risk; build confidence.
-- **Don't skip the STOP between refactors.** Each is a separable commit with a clear rollback boundary.
+- **Don't reintroduce confirmation prompts.** This skill is autonomous after pre-flight. Per-refactor results are logged inline; the user reviews the commit history at the end.
+- **Don't escalate a failing refactor to a prompt.** Revert it after 3 attempts and continue with the next. The user sees the `reverted` list in the final report.
 - **Don't run the full project suite after each refactor.** Module tests are the per-refactor signal; full suite is final verification only.
 
 ---

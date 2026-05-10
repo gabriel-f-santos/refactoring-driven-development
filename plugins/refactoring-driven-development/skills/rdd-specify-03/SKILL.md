@@ -7,7 +7,9 @@ description: Use this skill after rdd-map-codebase-02 to capture the business ru
 
 You are extracting the **observable behavior** of legacy code into written specs. The spec is the contract that the new implementation must honor. Tests will be designed against this spec in `/rdd-refactor-04`.
 
-This skill is **autonomous**: the legacy code already exists, so the source of truth is reading and simulating it — not interviewing the user. Anything you can't determine from code is captured as an entry under "Open questions" in `SPEC.md`. The user resolves those later by editing `SPEC.md` directly or re-running `/rdd-specify-03 <module>` after they've answered. Architectural decisions live in `/rdd-specify-01` (`TARGET.md`) — that's the only interview step in the pipeline.
+This skill is **autonomous**: the legacy code already exists, so the source of truth is reading and simulating it — not interviewing the user. Architectural decisions live in `/rdd-specify-01` (`TARGET.md`) — that's the only interview step in the pipeline.
+
+**Parity is the definition of migration, not a per-rule decision.** Every business rule captures what legacy actually does — bugs, quirks, hard-deletes, missing `updated_at`, reusable tokens, off-by-one errors and all. The spec NEVER frames a question as "fix this bug or keep parity?" — parity is always the answer. Quirks and bugs worth improving later are recorded in the **Improvement candidates** section (non-blocking, fed into `/rdd-improve-05` as a separate session). Things that are genuinely ambiguous from the code (unreachable branches, contradictory rules, missing source for a tribal value) go to **Open questions**. These two sections are different: Open questions have answers that affect the spec; Improvement candidates are post-parity work.
 
 ## Modes
 
@@ -126,17 +128,17 @@ Example: *"Channel handle derived from email prefix — what if two users share 
 - Error response shape and code?
 - Cleanup of partial state? (e.g., "registration creates user + channel — what if channel creation fails after user row inserted? Is it transactional?")
 
-**Output of this step:** a list of unmapped consequences. Each is either:
+**Output of this step:** a list of unmapped consequences. Each goes to **exactly one** of three places (never to "Open questions" by default):
 
-- **Resolved by reading more code** (the code does handle it, you just hadn't found it yet) — fold into a BR with the code citation
-- **Implicit but unaddressed** (legacy code happens to work but no rule states it) — record as an entry in the **Open questions** section of `SPEC.md`, written so the user can answer in one line
-- **Genuine gap** (legacy bug or missing handling) — record as an entry in **Open questions**; default assumption is parity (legacy is the truth) and you note that as the recommendation for that question
+- **Resolvable by reading more code** (the code does handle it; you just hadn't found it) — fold into a BR with the code citation. Done.
+- **Bug, quirk, code smell, or design suggestion** (legacy code does X but X is wrong / weird / could be better) — record under **Improvement candidates** in `SPEC.md` with the code citation, a class (`bug` / `quirk` / `code-smell` / `design`), and a one-line note about risk if changed. **Do NOT phrase as a question.** The migration locks legacy behavior; `/rdd-improve-05` decides what to do about candidates later.
+- **Genuinely ambiguous from code** (unreachable branch, two BRs contradict, missing source for a value the code reads from env, etc.) — record under **Open questions** with the specific question and any context. Open questions are answerable; bugs are not (parity already answered).
 
 Don't enumerate every possible edge case exhaustively — simulate realistic execution paths and flag what no document currently addresses.
 
 ### 5. Draft `SPEC.md` incrementally
 
-Create `{module_dir}/spec/SPEC.md` (the `module_dir` resolved in step 1.5, plus a `spec/` subdirectory — e.g., `{artifacts_dir}/005_reports/spec/SPEC.md`) using `templates/SPEC.md`. **Write incrementally** — don't try to one-shot a long file. Append section by section: Domain → Use cases → API surface → Business rules → Error Catalog → Side effects → Out of scope → Open questions → Intentional deviations.
+Create `{module_dir}/spec/SPEC.md` (the `module_dir` resolved in step 1.5, plus a `spec/` subdirectory — e.g., `{artifacts_dir}/005_reports/spec/SPEC.md`) using `templates/SPEC.md`. **Write incrementally** — don't try to one-shot a long file. Append section by section: Domain → Use cases → API surface → Business rules → Error Catalog → Side effects → Out of scope → **Improvement candidates** → Open questions → Intentional deviations.
 
 The module directory follows this layout (full structure documented in `templates/PROGRESS.md`):
 
@@ -225,12 +227,13 @@ Empty by default — parity is the rule. Filled only when the user explicitly ap
 
 ### 6. Resolve gaps without asking
 
-When you can't pin a detail during drafting, **do not** stop and ask the user. Two paths:
+When you can't pin a detail during drafting, **do not** stop and ask the user. Three paths, picked deterministically by the type of gap:
 
-- **Pick the parity-default** and keep going. If the legacy code does X under condition Y, write the BR as "BR-NN — under Y, system does X. `(code: path:line)`". Default for ambiguous behavior: whatever the legacy currently does is the rule.
-- **If even the parity behavior is ambiguous** (e.g., the code path is unreachable, or two branches contradict), record an entry under **Open questions** describing the ambiguity, the options, and your recommended default. The user resolves later by editing `SPEC.md` or re-running this skill.
+- **Pick the parity-default** and keep going. If legacy does X under condition Y, write the BR as "BR-NN — under Y, system does X. `(code: path:line)`". This is the answer for any "is this behavior intentional or a bug?" doubt — parity says legacy is the rule, full stop.
+- **If you suspect a bug or smell** (legacy works but in a way that's likely unintended, suboptimal, or risky), record it under **Improvement candidates** with the code citation, a class label (`bug` / `quirk` / `code-smell` / `design`), and a risk-if-changed note. The BR still captures legacy behavior verbatim; the candidate is parallel documentation for `/rdd-improve-05` to consider later.
+- **If the code itself is ambiguous** (unreachable branch, two paths contradict, value comes from an env var or DB row you can't read), record under **Open questions** describing the specific ambiguity. Open questions are about *what legacy actually does* — not about *whether to fix it*.
 
-This is the autonomy contract: the skill produces a complete spec from code-as-truth + simulation, with gaps surfaced explicitly under Open questions. The user reviews `SPEC.md`, edits inline, and moves on. No mid-spec dialog.
+This is the autonomy contract: the skill produces a complete spec from code-as-truth + simulation. Bugs land in Improvement candidates. Genuine ambiguities land in Open questions. The user reviews `SPEC.md`, answers Open questions inline, and moves on. No mid-spec dialog about "fix or keep" — that's not even a question the skill is allowed to ask.
 
 ### 7. Initialize `PROGRESS.md` and hand off
 
@@ -264,9 +267,11 @@ A good BR is testable, sourced, and specific. Each maps to at least one upcoming
 ## Anti-patterns to avoid
 
 - **Don't describe implementation** — internal class structure, ORM choice, framework decorators. The spec is about what callers and the database see.
-- **Don't smooth over bugs** — if legacy returns 200 instead of 422 for invalid input, write that down. Migration locks current behavior; bug fixes are separate, marked changes.
-- **Don't make rules up.** Every rule traces to code or to an explicit Open question. Speculation goes to "Open questions" with a recommended default.
-- **Don't ask the user mid-spec.** Code is the source of truth; simulation finds gaps; gaps go to Open questions. The user resolves by editing `SPEC.md` after, not during. The single interactive step in the whole pipeline is `/rdd-specify-01` (architecture).
+- **Don't ask "fix the bug or keep parity?".** That is the single most prohibited framing in this skill. Migration is parity by definition. If you find a bug, the BR captures the buggy behavior verbatim and the bug is logged under **Improvement candidates** for `/rdd-improve-05`. Asking the user to choose between fix and parity defeats the entire skill — the answer is *always* parity here, with the fix proposal recorded for the separate improvement session.
+- **Don't put bugs in Open questions.** Open questions are for genuine ambiguity (unreachable code, contradictory branches, missing sources). Bugs go to Improvement candidates.
+- **Don't smooth over bugs.** If legacy returns 200 instead of 422 for invalid input, write that down as the BR. Note the smell under Improvement candidates if it's likely worth fixing later.
+- **Don't make rules up.** Every rule traces to code or to an explicit Open question. Speculation goes to "Open questions".
+- **Don't ask the user mid-spec.** Code is the source of truth; simulation finds gaps; gaps go to Improvement candidates or Open questions per the rules in step 6. The user resolves by editing `SPEC.md` after, not during. The single interactive step in the whole pipeline is `/rdd-specify-01` (architecture).
 - **Don't skip step 4 (simulation).** Static reading misses concurrency and edge cases the code happens to handle but no document captures.
 - **Don't write Error Catalog from imagination.** Codes come from grep'ing the legacy code for what it actually emits.
 
@@ -387,12 +392,15 @@ This is a deliberate context-engineering choice. If the main agent did the work 
 
    Step 4 — Simulate execution and find unmapped consequences:
    - For each capability, walk through inputs/outputs/related entities/concurrency/failure paths
-   - Anything no document addresses → record as an entry in the SPEC.md's "Open questions" section
+   - Findings split into two destinations:
+     - Bugs / quirks / code smells / design suggestions → "Improvement candidates" section (with class label and risk note)
+     - Genuinely ambiguous code (unreachable, contradictory, missing source) → "Open questions" section
+   - Never frame any item as "fix or keep parity" — parity is the rule, candidates are separate documentation
    - This step is yours to do — do not delegate it further
 
    Step 5 — Draft SPEC.md incrementally:
    - Write to: <artifacts_dir>/<seq>_<module_name>/spec/SPEC.md (create the spec/ subdirectory if missing)
-   - Follow templates/SPEC.md structure exactly: Domain, Use cases, API surface, Business rules (numbered BR-NN), Error Catalog (SCREAMING_SNAKE_CASE codes), Side effects, Out of scope, Open questions, Intentional deviations from legacy
+   - Follow templates/SPEC.md structure exactly: Domain, Use cases, API surface, Business rules (numbered BR-NN), Error Catalog (SCREAMING_SNAKE_CASE codes), Side effects, Out of scope, Improvement candidates (IC-NN), Open questions, Intentional deviations from legacy
    - Append section by section, not in one giant Write
 
    Step 6 — Initialize PROGRESS.md:

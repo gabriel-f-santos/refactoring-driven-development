@@ -295,11 +295,11 @@ Update `PROGRESS.md`: pipeline `harness` row → `✅ completed`; append history
 
 Implement every test from `TESTS.md` pointing at the **legacy** implementation. Run them. **Expect them to pass.**
 
-If a test fails, resolve **autonomously** with parity-first defaults — do not stop to ask:
+If a test fails, resolve **autonomously** with parity-first defaults — do not stop to ask. Migration locks legacy behavior verbatim; bugs and quirks are the rule, not exceptions.
 
 - **Test asserts behavior the legacy doesn't have** (test was over-specific) → adjust the test to match what legacy actually does. Append a history line to `PROGRESS.md` summarizing the adjustment (the actual change is committed to the test file).
-- **Spec describes behavior the legacy doesn't have** (BR was wrong) → update the BR in `SPEC.md` to match legacy, mark it `(legacy behavior verified during lock; spec corrected)`. Adjust the test accordingly.
-- **Legacy has a bug not in spec** → update `SPEC.md` BR to match the bug, mark `(legacy bug, intentional parity)`. Adjust the test. The default is **always parity** — the migration locks current behavior, including bugs. The user can later mark a deviation in `SPEC.md` if they want to fix it.
+- **Spec describes behavior the legacy doesn't have** (BR was wrong) → update the BR in `spec/SPEC.md` to match legacy, mark it `(legacy behavior verified during lock; spec corrected)`. Adjust the test accordingly.
+- **Legacy has a bug or quirk not in spec** → update `spec/SPEC.md` BR to match the bug verbatim, mark `(legacy bug, intentional parity)`. Adjust the test. **Also append the bug as an entry to `spec/SPEC.md` "Improvement candidates"** with a class label (`bug` / `quirk`) and a one-line risk-if-changed note — that's the input for `/rdd-improve-05` later. Never re-litigate "fix or keep" here; parity is the answer for this skill, improvement candidates are the parallel record for the next skill.
 
 Re-run after each adjustment. Apply the standard 3-attempt fix-loop discipline per test (read failure, diagnose, focused fix, re-run). After 3 unsuccessful attempts on the same test, **stop** with a hard-fail report — the situation is genuinely ambiguous and needs human judgment.
 
@@ -342,7 +342,7 @@ Re-read the entry point's section in `spec/SPEC.md` and the corresponding tests 
 - **Keep the same field names** in responses
 - **Keep bugs that callers depend on** (`legacy bug, intentional parity`)
 
-Stay in scope: only files required by **this entry point**. Unrelated issues → record in this task file's `Observations` section. Do **not** act on them.
+Stay in scope: only files required by **this entry point**. Unrelated issues → record in this task file's `Observations` section. **Do not act on them.** If reading legacy reveals a bug or quirk worth flagging for `/rdd-improve-05`, append it to `spec/SPEC.md` "Improvement candidates" (class + risk note) and continue porting verbatim — the port honors legacy, the candidate is the record for later.
 
 #### Step 5.3 — Run only this task's tests against new
 
@@ -473,6 +473,7 @@ Git operations beyond local commits (push, PR) are out of scope — the user own
 - **Don't push to remote.** User owns git operations beyond local commits.
 - **Don't bypass the upstream-port gate.** It exists to catch migration-order mistakes that prose-only `MAP.md` cannot prevent. If a real upstream genuinely isn't going to be ported, mark it `skipped:` in `.rdd.yml` with a reason — never edit Phase 0 to ignore it, and never fabricate a fake `PROGRESS.md` to make the gate think a module is done.
 - **Don't escalate ambiguity to a prompt** — apply the documented parity-first default and continue. Surfacing a question every time legacy and new disagree defeats autonomy. If the parity default is wrong for a specific case, the user reverts the commit and edits `SPEC.md` to record the deviation; then re-runs the skill.
+- **Don't ask "fix the bug or keep parity?".** Migration is parity by definition. Bugs are recorded in `spec/SPEC.md` "Improvement candidates" as input for `/rdd-improve-05`. Asking the user to choose at port time defeats the entire pipeline — the answer is *always* parity here, the fix discussion happens in a separate session.
 
 ---
 

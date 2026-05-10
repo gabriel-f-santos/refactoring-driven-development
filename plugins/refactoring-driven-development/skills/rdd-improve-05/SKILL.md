@@ -82,7 +82,9 @@ If preflight passes, set the pipeline `improve` row in `PROGRESS.md` to `🔄 in
 
 ### Phase 1 — Identify improvements
 
-Read the new code for this module under `target.source`. Compare against `TARGET.md` conventions. Look for:
+**Primary input: `spec/SPEC.md` "Improvement candidates" section.** Each `IC-NN` entry is a bug, quirk, code-smell, or design suggestion that `/rdd-specify-03` and `/rdd-refactor-04` flagged during the parity-locked port. They are the high-priority candidates for this phase — the user already saw them and they survived the parity bar. Translate each `IC-NN` into one or more refactors here.
+
+**Secondary input: read the new code** under `target.source`. Compare against `TARGET.md` conventions and look for:
 
 - **Conventions violations** — naming, folder structure, error handling style, validation pattern, log format
 - **Direct legacy translations that don't fit** the new stack's idioms (e.g., callback-style code in an async/await stack, manual error checks where typed exceptions would be cleaner)
@@ -92,6 +94,8 @@ Read the new code for this module under `target.source`. Compare against `TARGET
 - **Implicit coupling** — modules talking through shared globals instead of explicit dependencies
 - **Test code that violates `/rdd-refactor-04` boundary rules** — tests asserting implementation rather than behavior. Flag for deletion or rewrite.
 
+**Behavior-changing improvements (bugs from `IC-NN` with class `bug`):** these change observable behavior and therefore can break tests. Treat them as **medium or high risk** by default. The fix-or-revert flow (Step 2.4) handles them: if a fix breaks the safety net, the refactor is reverted and the user can decide later (out of scope for autonomous mode). Behavior-preserving improvements (`code-smell`, `design`) are **low risk**.
+
 For each candidate refactor, classify by **risk**:
 
 - **Low risk (safe refactors)**: rename, extract function, inline variable, replace type with type alias, reorganize imports
@@ -100,7 +104,7 @@ For each candidate refactor, classify by **risk**:
 
 Order: low risk first, high risk last. High-risk refactors should be small enough to revert if they break a test.
 
-**Write `{module_dir}/improve/IMPROVE.md`** using `templates/IMPROVE.md`. List each refactor with name (used as the file prefix `NN_<name>.md`), description, risk, expected benefit, scope (which files), and parity assertion (which tests must remain green). Order by risk, low → high; the order determines the `NN` prefix.
+**Write `{module_dir}/improve/IMPROVE.md`** using `templates/IMPROVE.md`. List each refactor with name (used as the file prefix `NN_<name>.md`), description, **source `IC-NN` (if any)**, risk, expected benefit, scope (which files), and parity assertion (which tests must remain green). Order by risk, low → high; the order determines the `NN` prefix. Refactors derived from a SPEC `IC-NN` cite that ID; refactors derived from convention review cite "convention review".
 
 Initialize the Improve refactors table in `PROGRESS.md` with one row per planned refactor (status `⬜ pending`, file path `improve/NN_<name>.md` not yet created).
 

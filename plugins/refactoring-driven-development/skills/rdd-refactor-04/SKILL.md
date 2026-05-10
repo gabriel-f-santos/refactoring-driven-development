@@ -34,7 +34,7 @@ The user invokes the skill with a module name (e.g., "/rdd-refactor-04 products"
 
 - `{artifacts_dir}/TARGET.md` — must exist (chosen test framework, test posture, error format, conventions)
 - `{artifacts_dir}/MAP.md` — must exist; look up the module's **`Seq`** (sequence number) in the Modules table
-- `{module_dir}/spec/SPEC.md` — must exist with BRs and Error Catalog filled. `module_dir` is `{artifacts_dir}/<Seq>_<module>/` (e.g., `rdd/010_products/`); the user can invoke with either the bare name (`products`) or the prefixed form (`010_products`).
+- `{module_dir}/spec/SPEC.md` — must exist with BRs and Error Catalog filled. `module_dir` is `{artifacts_dir}/<Seq>_<module>/` (e.g., `rdd/003_products/`); the user can invoke with either the bare name (`products`) or the prefixed form (`003_products`).
 - `{module_dir}/PROGRESS.md` — must exist (created by `/rdd-specify-03`). Aggregate state for the module; this skill updates the pipeline table, the tasks table, and the upstream gate during execution.
 
 If any is missing, instruct the user to run the upstream skill first. **Do not proceed.**
@@ -43,7 +43,7 @@ If any is missing, instruct the user to run the upstream skill first. **Do not p
 
 ### Module directory resolution
 
-Same three-form input as `/rdd-specify-03`: bare name (`products`), prefixed (`010_products`), or Seq only (`010`). Resolution:
+Same three-form input as `/rdd-specify-03`: bare name (`products`), prefixed (`003_products`), or Seq only (`003`). Resolution:
 
 1. Parse the input:
    - `^[0-9]{3}$` → Seq-only; look up MAP for the row with this Seq, take its name.

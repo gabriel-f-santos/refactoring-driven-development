@@ -23,14 +23,14 @@ The user invokes the skill with a module name (e.g., "/rdd-improve-05 products")
 
 - `{artifacts_dir}/TARGET.md` — for chosen conventions
 - `{artifacts_dir}/MAP.md` — to look up the module's **`Seq`** and find its `module_dir`
-- `{module_dir}/spec/SPEC.md` — for the contract that must remain honored. `module_dir` is `{artifacts_dir}/<Seq>_<module>/` (e.g., `rdd/010_products/`); accept either bare name or prefixed form as input.
+- `{module_dir}/spec/SPEC.md` — for the contract that must remain honored. `module_dir` is `{artifacts_dir}/<Seq>_<module>/` (e.g., `rdd/003_products/`); accept either bare name or prefixed form as input.
 - `{module_dir}/spec/TESTS.md` — for the test plan
 - `{module_dir}/PROGRESS.md` — must show pipeline `port` row as `✅ completed` and `final` row as `✅ completed`. If not, instruct the user to finish the port first.
 - The new code under `target.source` for this module
 
 ### Module directory resolution
 
-Same three-form input as `/rdd-specify-03` and `/rdd-refactor-04`: bare name (`products`), prefixed (`010_products`), or Seq only (`010`). Glob `{artifacts_dir}/[0-9][0-9][0-9]_<module>/` to resolve, expect exactly one match (the directory was created by `/rdd-specify-03` and populated by `/rdd-refactor-04`). Backward compat: legacy flat layout accepted with a one-line warning.
+Same three-form input as `/rdd-specify-03` and `/rdd-refactor-04`: bare name (`products`), prefixed (`003_products`), or Seq only (`003`). Glob `{artifacts_dir}/[0-9][0-9][0-9]_<module>/` to resolve, expect exactly one match (the directory was created by `/rdd-specify-03` and populated by `/rdd-refactor-04`). Backward compat: legacy flat layout accepted with a one-line warning.
 
 ---
 

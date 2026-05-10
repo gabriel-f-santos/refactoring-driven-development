@@ -1,6 +1,6 @@
 ---
 name: rdd-specify-03
-description: Use this skill after rdd-map-codebase-02 to capture the business rules of one module (or all modules in batch mode) from legacy code, producing numbered specs that downstream characterization tests will lock. Third step in the RDD pipeline (per-module or batch). Triggers on "spec the X module", "specify X", "spec all modules", "batch spec", "what does X do", "extract business rules". Produces rdd/<Seq>_<module>/spec/SPEC.md and rdd/<Seq>_<module>/PROGRESS.md per module (e.g., rdd/005_foundation/spec/SPEC.md); batch mode iterates across all modules from MAP.md in ascending Seq order.
+description: Use this skill after rdd-map-codebase-02 to capture the business rules of one module (or all modules in batch mode) from legacy code, producing numbered specs that downstream characterization tests will lock. Third step in the RDD pipeline (per-module or batch). Triggers on "spec the X module", "specify X", "spec all modules", "batch spec", "what does X do", "extract business rules". Produces rdd/<Seq>_<module>/spec/SPEC.md and rdd/<Seq>_<module>/PROGRESS.md per module (e.g., rdd/001_foundation/spec/SPEC.md); batch mode iterates across all modules from MAP.md in ascending Seq order.
 ---
 
 # rdd-specify-03 — Capture the spec of one module (or all)
@@ -32,14 +32,14 @@ If the user invoked the skill without a module name, fall through to **batch mod
 
 ### 1.5. Resolve module directory
 
-Module artifacts live at `{artifacts_dir}/<Seq>_<module>/` (e.g., `rdd/005_foundation/`). This skill is responsible for **creating that directory** when it doesn't exist yet — `/rdd-map-codebase-02` only records `Seq` in `MAP.md`.
+Module artifacts live at `{artifacts_dir}/<Seq>_<module>/` (e.g., `rdd/001_foundation/`). This skill is responsible for **creating that directory** when it doesn't exist yet — `/rdd-map-codebase-02` only records `Seq` in `MAP.md`.
 
 **Resolution rules:**
 
 1. The user can invoke with any of three forms — all must resolve to the same directory:
    - Bare module name — `/rdd-specify-03 reports`
    - Pre-prefixed — `/rdd-specify-03 005_reports`
-   - Seq only — `/rdd-specify-03 005`
+   - Seq only — `/rdd-specify-03 005` (looks up which module has Seq=005 in MAP)
 2. Parse the input:
    - Matches `^[0-9]{3}$` → Seq-only. Look up MAP.md's Modules table for the row with this `Seq`; the module name comes from there.
    - Matches `^[0-9]{3}_(.+)$` → Pre-prefixed. The first 3 digits are the `Seq`; the suffix is the module name.
@@ -255,7 +255,7 @@ Tell the user:
 - **If all upstream deps have completed ports:** Next step: `/rdd-refactor-04 {module}` — ready to start.
 - **If some upstream deps are not yet ported:** Next step: complete `/rdd-refactor-04 <upstream>` first. List the pending upstreams (`<Seq>_<name>`) so the user can plan. The Phase 0 gate in `/rdd-refactor-04 {module}` will enforce this — bypass requires marking those upstreams `skipped:` in `.rdd.yml`.
 
-If the resolved `Seq` for this module conflicts with the dependencies' `Seq` (e.g., this module is `010` but depends on `015`), also warn — the topological order is wrong and the user should re-run `/rdd-map-codebase-02` to renumber.
+If the resolved `Seq` for this module conflicts with the dependencies' `Seq` (e.g., this module is `003` but depends on `005`), also warn — the topological order is wrong and the user should re-run `/rdd-map-codebase-02` to renumber.
 
 ## Quality bar for business rules
 
@@ -299,7 +299,7 @@ If validation fails, stop — don't start the autopilot.
 
 Parse MAP.md for the module table. Capture per module: **`Seq`**, name, entry-point count, source path hint, wave. If MAP.md is missing or empty, instruct the user to run `/rdd-map-codebase-02` first. If MAP.md has no `Seq` column (legacy from prior plugin version), instruct the user to re-run `/rdd-map-codebase-02` to add sequence numbers — batch mode requires `Seq` to know the iteration order.
 
-**Iterate modules in ascending `Seq` order** — the lowest `Seq` (e.g., `005_<module>`) is processed first. This guarantees that when a module's spec is being written, its upstreams have either already been specced earlier in the same batch run or were declared dependencies in MAP.
+**Iterate modules in ascending `Seq` order** — the lowest `Seq` (e.g., `001_<module>`) is processed first. This guarantees that when a module's spec is being written, its upstreams have either already been specced earlier in the same batch run or were declared dependencies in MAP.
 
 ### B3. Read or create the progress file
 
@@ -315,14 +315,14 @@ Parse MAP.md for the module table. Capture per module: **`Seq`**, name, entry-po
 
 ## Modules
 
-### 005_foundation
+### 001_foundation
 - **Status:** completed | in_progress | pending | failed
-- **SPEC.md:** rdd/005_foundation/spec/SPEC.md
-- **PROGRESS.md:** rdd/005_foundation/PROGRESS.md
+- **SPEC.md:** rdd/001_foundation/spec/SPEC.md
+- **PROGRESS.md:** rdd/001_foundation/PROGRESS.md
 - **BRs:** 8  •  **Errors:** 3  •  **Open questions:** 2
 - **Notes:** —
 
-### 010_ai-router
+### 002_auth
 - **Status:** pending
 - (filled when started)
 
@@ -331,7 +331,7 @@ Parse MAP.md for the module table. Capture per module: **`Seq`**, name, entry-po
 
 **On invocation:**
 
-- If the file does not exist, create it with one entry per module in **ascending `Seq` order**, all with `Status: pending`. Each module heading uses `<Seq>_<module>` (e.g., `### 005_foundation`). The user is starting fresh.
+- If the file does not exist, create it with one entry per module in **ascending `Seq` order**, all with `Status: pending`. Each module heading uses `<Seq>_<module>` (e.g., `### 001_foundation`). The user is starting fresh.
 - If the file exists, read it. Identify modules with `Status: completed` (skip these), `Status: failed` (skip — user must retry individually), and `Status: pending` or `Status: in_progress` (work to do).
 - If a module is `in_progress` from a prior session that died mid-spec, treat as `pending` — the prior partial work may need to be redone. Tell the user: *"Found `<module>` in_progress from a prior session — the SPEC.md may be partial. I'll redo it."*
 
@@ -342,7 +342,7 @@ Print a single status line so the user knows what's happening, then start the lo
 If starting fresh:
 
 ```
-Batch spec — N modules in Seq order: 005_foundation, 010_ai-router, 015_<...>, ...
+Batch spec — N modules in Seq order: 001_foundation, 002_auth, 003_<...>, ...
 Each module: read code, simulate, draft SPEC.md with Open questions for unresolved items. No prompts between modules.
 ```
 
@@ -369,8 +369,8 @@ This is a deliberate context-engineering choice. If the main agent did the work 
    You are running step "spec one module" as part of an RDD batch autopilot. The main agent has dispatched you with a self-contained prompt — you have no prior conversation context.
 
    Module: <module_name>
-   Sequence number (Seq): <seq>            # e.g., 005
-   Module directory: <artifacts_dir>/<seq>_<module_name>/    # e.g., rdd/005_foundation/
+   Sequence number (Seq): <seq>            # e.g., 001
+   Module directory: <artifacts_dir>/<seq>_<module_name>/    # e.g., rdd/001_foundation/
    Module's legacy source files: <comma-separated list or directory hint from MAP.md>
    Module's MAP.md entry-point count: <count>
 
@@ -447,13 +447,13 @@ Batch spec complete — <X>/<Y> modules specced (<Z> failed).
 
 | Module               | Status     | BRs | Errors | Open questions |
 |----------------------|------------|-----|--------|----------------|
-| 005_foundation       | ✅ done    |   8 |      3 |              2 |
-| 010_ai-router        | ✅ done    |  12 |      4 |              5 |
-| 015_whatsapp-channel | ❌ failed  |   — |      — | (see notes)    |
+| 001_foundation       | ✅ done    |   8 |      3 |              2 |
+| 002_auth        | ✅ done    |  12 |      4 |              5 |
+| 003_whatsapp-channel | ❌ failed  |   — |      — | (see notes)    |
 | ...
 
 Failed modules (retry individually):
-- 015_whatsapp-channel — <reason>
+- 003_whatsapp-channel — <reason>
 
 Total open questions: <M>
 

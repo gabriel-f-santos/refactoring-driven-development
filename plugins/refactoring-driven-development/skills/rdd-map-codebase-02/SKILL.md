@@ -119,14 +119,15 @@ Every module gets a 3-digit zero-padded sequence number (`Seq`) that defines a *
 
 - Locate the module's artifacts directory (folder name is `NNN_<module>/`)
 - Sort modules and pick the next eligible one
-- Enforce upstream-port-completed gates (a module with `Seq` = 030 cannot port until all `Seq < 030` are completed or explicitly skipped)
+- Enforce upstream-port-completed gates (a module with `Seq` = `010` cannot port until every `Seq < 010` is completed or explicitly skipped)
 
 **Numbering rule:**
 
-- Use **gaps of 5**: `005`, `010`, `015`, `020`, ..., `070`, `075`. This lets you insert `008_<new-module>` later without renumbering the whole chain (the same scheme used in DB migration tools and BASIC line numbers).
-- **Within a wave**, order by dependency satisfaction first (topological — `products` before `sales` if `sales` depends on `products`), then alphabetical for ties.
-- **Across waves**, lower wave gets lower `Seq`. Wave 0 always starts at `005`.
-- The same `Seq` must not be assigned to two modules. If gaps fill up, renumber lazily — the renumbering is a deliberate user action via re-running `/rdd-map-codebase-02`.
+- Use **sequential numbering**: `001`, `002`, `003`, ..., `099`. Zero-padded to 3 digits. Same convention as Django migrations and similar ordered-list tools — simpler than gap-based numbering, and inserts mid-flight are rare in legacy migrations (the legacy code is fixed; if a missed module surfaces later, re-run `/rdd-map-codebase-02` to renumber, or `git mv` the affected modules in one commit).
+- **Order by dependency (topological), not by wave or risk.** A module's `Seq` must be greater than every `Seq` it depends on. `auth` typically gets a low `Seq` because many modules depend on it; `reports` and `admin` typically get high `Seq` because they read from many modules.
+- **Tiebreak alphabetically** when two modules at the same dependency level could go in either order.
+- **Wave is separate from Seq.** The wave column captures **cutover risk** ("read-only first", "auth last for blast radius") — that's a deployment concern, not a porting-order concern. The user flips feature flags in whatever order makes sense post-port; `Seq` only governs the order in which code gets ported and tests get locked. Don't conflate the two — that's how you end up with cross-wave dependencies that need `.rdd.yml skipped:` workarounds.
+- The same `Seq` must not be assigned to two modules.
 
 **Do not create directories in this step.** `Seq` is recorded in `MAP.md` only. Module directories (`{artifacts_dir}/NNN_<module>/`) are created lazily by `/rdd-specify-03` when each module is specced. This keeps the filesystem clean of empty placeholders and lets the user adjust `Seq` in `MAP.md` text before any spec work commits to disk.
 
@@ -137,7 +138,7 @@ Create `{artifacts_dir}/MAP.md` using the template in `templates/MAP.md`. It mus
 - **Summary** — total entry points, modules identified, estimated calendar effort
 - **Module table** — `Seq`, name, entry-point count, domain summary, complexity (S/M/L/XL), risk (low/med/high), dependencies. **`Seq` is the leftmost column** so the migration order is visually obvious.
 - **Dependency notes** — any cycles, hubs, or surprises
-- **Migration order** — numbered list of waves with rationale, listing each wave's `Seq` range (e.g., "Wave 2 — `015`–`030`")
+- **Wave plan (cutover risk)** — separate from `Seq`. Tabulates which modules cut over together based on rollback risk, blast radius, etc. May reference `Seq` ranges but doesn't dictate them.
 - **Open questions** — things you couldn't determine from code alone (ask the user)
 
 ### 8. Hand-off
@@ -157,7 +158,7 @@ Tell the user:
 - **Don't skip the configuration check.** Without `.rdd.yml`, downstream skills break.
 - **Don't create module directories.** Folder layout is filesystem-true only after `/rdd-specify-03` runs. This skill writes `MAP.md` and stops — directories are a downstream concern.
 - **Don't assign duplicate `Seq` values.** Each module is unique. If two modules end up at the same `Seq`, you forgot to apply the within-wave topological/alphabetical tiebreak.
-- **Don't pack `Seq` values without gaps.** Use gaps of 5 so future inserts don't force a chain renumber.
+- **Don't conflate `Seq` with wave/cutover risk.** `Seq` is dependency order (topological). Wave is rollout strategy. Mixing them produces cross-wave dependencies that need `.rdd.yml skipped:` workarounds for ordering — those should only be needed for genuinely-skipped modules (deprecated, out of scope), not for ordering tension.
 
 ## When to spawn sub-agents
 

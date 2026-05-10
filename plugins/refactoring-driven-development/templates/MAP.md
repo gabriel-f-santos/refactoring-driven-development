@@ -11,15 +11,16 @@
 
 ## Modules
 
-> `Seq` is the migration sequence number (3-digit, zero-padded, gaps of 5). Module directories created by `/rdd-specify-03` will be named `<Seq>_<module>/` (e.g., `005_foundation/`). Downstream skills enforce upstream-port-completed gates against this order.
+> `Seq` is the migration sequence number (3-digit, zero-padded, sequential — `001`, `002`, `003`, ...). **Order is topological by dependency** — a module's `Seq` is greater than every `Seq` it depends on. Module directories created by `/rdd-specify-03` will be named `<Seq>_<module>/` (e.g., `001_foundation/`). Downstream skills enforce upstream-port-completed gates against this order.
 
 | Seq | Module | Entry points | Domain summary | Complexity | Risk | Depends on |
 |-----|--------|--------------|----------------|------------|------|------------|
-| 005 | `foundation` | n/a | Skeleton, auth, multi-tenancy guard, observability | XL | High | — |
-| 010 | `products` | 12 | CRUD over product catalog, with search and price history | M | Low | `foundation` |
-| 015 | `customers` | 8 | CRUD over customers, with contact enrichment | M | Low | `foundation` |
-| 020 | `appointments` | 9 | Calendar with conflict detection and Google Calendar sync | M | Medium | `customers` |
-| 025 | `sales` | 18 | Sale creation, refund, listing; commission triggers | L | High | `products`, `customers` |
+| 001 | `foundation` | n/a | Skeleton, multi-tenancy guard, observability | XL | High | — |
+| 002 | `auth` | 4 | Login, registration, sessions, password recovery | M | High | `foundation` |
+| 003 | `products` | 12 | CRUD over product catalog, with search and price history | M | Low | `foundation` |
+| 004 | `customers` | 8 | CRUD over customers, with contact enrichment | M | Low | `foundation` |
+| 005 | `appointments` | 9 | Calendar with conflict detection and Google Calendar sync | M | Medium | `customers` |
+| 006 | `sales` | 18 | Sale creation, refund, listing; commission triggers | L | High | `products`, `customers` |
 | ... | | | | | | |
 
 Complexity: S (≤5 entry points, simple), M (5–15), L (15–30), XL (>30 or transactional core)
@@ -32,19 +33,23 @@ Risk: low (read-only / isolated), medium (writes + side effects), high (transact
   - `customers` is used by `sales`, `appointments`, `quotes` — migrate early but with high care
 - **Surprises:** ...
 
-## Migration order
+## Wave plan (cutover risk)
 
-| Wave | Seq range | Modules | Why this wave |
-|------|-----------|---------|---------------|
-| 0 — Setup | 005 | `foundation` | Skeleton, JWT validation, observability — foundation for all subsequent migrations |
-| 1 — Read-only | 010–015 | `products`, `customers` (read paths first) | No writes; rollback is trivial |
-| 2 — Simple CRUD | 020–030 | `customers` (writes), `suppliers` | Isolated writes, simple rules |
-| 3 — CRUD with side effects | 035–045 | `appointments`, `stock_movements`, `commissions` | Writes that trigger external sync or calculations |
-| 4 — Transactional | 050–060 | `sales`, `quotes`, `payables`, `receivables` | Multi-table writes, business rules core |
-| 5 — External integrations | 065–070 | `payments`, `shipping` | Webhooks, idempotency-critical |
-| 6 — AI / streaming | 075–080 | `chat`, `agents` | Stateful, streaming, cost-sensitive |
-| 7 — Admin | 085 | `admin` | Low traffic, can wait |
-| 8 — Auth | 090 | (cross-cutting) | Highest blast radius if it breaks |
+> Separate from `Seq`. Captures **rollout strategy** (which modules cut over together, in what risk order) — not porting order. Cutover happens after port + improve, governed by feature flags.
+
+| Wave | Modules | Cutover rationale |
+|------|---------|-------------------|
+| 0 — Setup | `foundation` | Skeleton, observability — foundational for everything else |
+| 1 — Read-only | `dashboard`, `analytics` | No writes; rollback is trivial |
+| 2 — Simple CRUD | `products`, `customers`, `suppliers` | Isolated writes, simple rules |
+| 3 — CRUD with side effects | `appointments`, `commissions` | Writes that trigger external sync |
+| 4 — Transactional | `sales`, `payables`, `receivables` | Multi-table writes, business rules core |
+| 5 — External integrations | `payments`, `shipping` | Webhooks, idempotency-critical |
+| 6 — AI / streaming | `chat`, `agents` | Stateful, streaming, cost-sensitive |
+| 7 — Admin | `admin` | Low traffic, can wait |
+| 8 — Auth | `auth` | Highest blast radius — last to flip in production |
+
+> Note: a module ported early (low `Seq`) can still cut over late (high wave). E.g., `auth` typically has a low `Seq` because many modules depend on its code, but cuts over in wave 8 because flipping production auth is the riskiest deployment.
 
 ## Open questions
 

@@ -113,21 +113,21 @@ map:     ✅ completed (12 modules identified)
 Modules (sorted by Seq)                                                 (legend at bottom)
 ───────────────────────                                                 ┌─────────────────────────────────┐
                        spec    tests   port              improve   wave │ ⬜ not started                   │
-005_foundation         ✅      ✅      ✅                 ✅        0    │ 🔄 in progress (with detail)    │
-010_products           ✅      ✅      ✅                 ✅        2    │ ✅ completed                     │
-015_customers          ✅      ✅      🔄 EP 4/8         ⬜        2    │ ⏭ skipped (.rdd.yml)            │
-020_sales              ✅      ⬜      ⬜                 ⬜        4    └─────────────────────────────────┘
-025_appointments       🔄 (open questions)  ⬜  ⬜       ⬜        3
-030_commissions        ⬜      ⬜      ⬜                 ⬜        4
+001_foundation         ✅      ✅      ✅                 ✅        0    │ 🔄 in progress (with detail)    │
+002_products           ✅      ✅      ✅                 ✅        2    │ ✅ completed                     │
+003_customers          ✅      ✅      🔄 task 4/8       ⬜        2    │ ⏭ skipped (.rdd.yml)            │
+004_sales              ✅      ⬜      ⬜                 ⬜        4    └─────────────────────────────────┘
+005_appointments       🔄 (open questions)  ⬜  ⬜       ⬜        3
+006_commissions        ⬜      ⬜      ⬜                 ⬜        4
 ... (remaining modules from MAP)
 
 Currently active
 ────────────────
-• 015_customers — /rdd-refactor-04 paused at EP-4 of 8. Resume: /rdd-refactor-04 customers
+• 003_customers — /rdd-refactor-04 paused at task 4 of 8. Resume: /rdd-refactor-04 customers
 
 Next eligible
 ─────────────
-• 015_customers (resume in progress) — once complete, 020_sales is next (upstreams 005, 010, 015 all completed/skipped)
+• 003_customers (resume in progress) — once complete, 004_sales is next (upstreams 001, 002, 003 all completed/skipped)
 
 Blockers
 ────────
@@ -135,7 +135,7 @@ Blockers
 
 Suggested next step
 ───────────────────
-Resume /rdd-refactor-04 015_customers, or start /rdd-specify-03 on a higher-Seq module if you want to parallelize spec work ahead. Phase 0 of /rdd-refactor-04 will block any module whose upstreams aren't completed.
+Resume /rdd-refactor-04 003_customers, or start /rdd-specify-03 on a higher-Seq module if you want to parallelize spec work ahead. Phase 0 of /rdd-refactor-04 will block any module whose upstreams aren't completed.
 ```
 
 Adjust the layout to fit whatever's actually in the artifacts. The goal is **at-a-glance comprehension**: the user looks at this once and knows where they are.
@@ -185,8 +185,8 @@ If the user says "/rdd-status quick" or "/rdd-status summary", return only the h
 ```
 Setup: target ✅  map ✅
 Modules: 3/12 done  •  1 in progress  •  8 not started
-Currently active: 015_customers (port, EP 4/8)
-Next eligible: 015_customers (in progress)  →  020_sales after
+Currently active: 003_customers (port, task 4/8)
+Next eligible: 003_customers (in progress)  →  004_sales after
 Blockers: none
 ```
 

@@ -79,7 +79,7 @@ Example: "Edge function cold starts are causing 800ms p95 on dashboard endpoints
 
 #### Option A: Shared with legacy (same Postgres, same schema)
 - New backend connects to existing Supabase Postgres for the entire migration window.
-- **Pros:** Zero data migration risk during port phase; simplest rollback (flip the flag back).
+- **Pros:** Zero data migration risk during port phase; simplest rollback (redeploy previous tag, or flip flag if TD-08=B).
 - **Cons:** Still locked into Supabase for the DB layer until final cutover.
 
 #### Option B: Migrate DB up front
@@ -98,7 +98,64 @@ Example: "Edge function cold starts are causing 800ms p95 on dashboard endpoints
 
 ---
 
-(Repeat the TD-NN block for each remaining decision: ORM, Auth strategy, Hosting, Test framework, Cutover strategy, Async/queue, Observability, etc.)
+(Repeat the TD-NN block for each remaining decision: ORM, Auth strategy, Hosting, Test framework, Async/queue, Observability, etc.)
+
+---
+
+### TD-08: Cutover & frontend approach
+
+**Context:** How does production traffic move from legacy to new code, and what happens to the frontend? This decision drives whether `Wave plan` in `MAP.md` is load-bearing or just optional documentation, and whether feature-flag infrastructure is needed at all.
+
+**Options:**
+
+#### Option A: Big-bang side-by-side (recommended for AI-era / small teams)
+
+- **Layout:**
+  ```
+  src/                       # legacy frontend, INTOCADO até cutover
+  legacy-backend/            # legacy backend, INTOCADO até cutover (e.g., supabase/functions/)
+  v2/
+  ├── backend/               # novo backend
+  └── frontend/              # FRESH-START — nasce chamando v2/backend, NÃO é cópia de src/
+  ```
+- **`v2/frontend/` é fresh-start.** Cada página/componente nasce já calling o backend novo. Pode reaproveitar componentes/utilitários do `src/` (importar com cuidado), mas NÃO é byte-copy do projeto inteiro.
+- **Cutover:** um único deploy do `v2/` (frontend + backend). Domínio público aponta pro novo. `src/` e legacy-backend são deletados depois de estabilizar.
+- **Feature flags:** nenhuma necessária.
+- **Rollback:** redeploy da tag anterior (frontend + backend juntos).
+- **Pros:** código limpo desde o nascimento, sem dívida importada do legado; agente IA porta backend + escreve frontend novo numa janela curta; deploy é evento único e simples; nada de infraestrutura de flags pra manter ou aposentar depois.
+- **Cons:** all-or-nothing — quando o flip acontece, todo o tráfego vai pro `v2/`. Blast radius alto se algum bug escapou (mitigado por testes de paridade no port).
+- **Best for:** equipes pequenas (2–5), agente IA conduzindo o port (horas a poucos dias), ambientes com janela de deploy controlada.
+
+#### Option B: Strangler-fig com feature flags (1 frontend só)
+
+- **Layout:**
+  ```
+  src/                       # frontend ÚNICO; ganha flags/gateway routing por rota
+  legacy-backend/            # encolhe módulo a módulo conforme cutover
+  v2/backend/                # cresce módulo a módulo conforme cutover
+  # NÃO existe v2/frontend/. Frontend permanece único em src/.
+  ```
+- **Frontend nunca é duplicado.** Só o código de chamada em `src/` é atualizado pra calling `v2/backend` em vez do legacy, atrás de uma flag.
+- **Cutover:** flag flip per-rota / per-feature. Cada módulo vai pro `v2/backend` quando sua flag flipa.
+- **Feature flags:** sim, com infra dedicada (LaunchDarkly, Unleash, ou caseiro).
+- **Pros:** rollback per-feature instantâneo (flip a flag de volta); migração gradual; blast radius pequeno por evento de cutover; testa em produção com tráfego real antes de 100%.
+- **Cons:** infra de flag pra montar e manter; ambos legacy e novo backend precisam rodar em paralelo durante toda a migração; janela longa de "duas verdades"; flag debt pra limpar depois.
+- **Best for:** equipes maiores, alto tráfego de produção, ambientes regulados onde rollback per-feature é requisito.
+
+#### Anti-pattern: C — Cópia do frontend + refactor (`v2/frontend/` clonando `src/`)
+
+**Não use.** Combina os custos de A e B sem nenhum dos benefícios:
+
+- Você duplica o frontend (custo de manter duas árvores divergindo) — mas esse custo só faria sentido se fosse fresh-start (A).
+- Você não tem flag dinâmica fazendo nada útil — o request que entra em `v2/frontend/` já tá no caminho novo, então a flag não tem o que decidir.
+- A migração vira "trocar Supabase calls por NestJS calls módulo a módulo dentro do clone", o que é o trabalho de B só que duplicado em dois frontends que vão divergir com bugs/UX/visual com o tempo.
+- No cutover você fica entre `git mv v2/frontend/* src/` (e o porquê de ter copiado?) ou subir `v2/frontend/` no domínio (= big-bang com etapas extras desnecessárias).
+
+Se você se pegar fazendo C, **escolha A ou B e ataque conscientemente**.
+
+**Recommendation:** Option A para migrações na era IA (equipe pequena + agente fazendo o port). Option B para produção de alto tráfego onde rollback per-feature é requisito explícito. C é anti-pattern.
+
+**Decision:** _<to be filled by user>_
 
 ---
 
@@ -164,7 +221,7 @@ Decisions explicitly deferred:
 | TD-05 | Auth strategy | Phase 1 keep Supabase, Phase 2 Better Auth | _<pending>_ |
 | TD-06 | Hosting | Railway | _<pending>_ |
 | TD-07 | Test framework | Vitest + testcontainers | _<pending>_ |
-| TD-08 | Cutover strategy | Strangler fig with feature flags | _<pending>_ |
+| TD-08 | Cutover & frontend approach | A (big-bang side-by-side, fresh-start `v2/frontend/`) | _<pending>_ |
 
 ---
 

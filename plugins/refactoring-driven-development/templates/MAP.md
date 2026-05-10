@@ -35,12 +35,14 @@ Risk: low (read-only / isolated), medium (writes + side effects), high (transact
 
 ## Wave plan (cutover risk)
 
-> Separate from `Seq`. Captures **rollout strategy** (which modules cut over together, in what risk order) — not porting order. Cutover happens after port + improve, governed by feature flags.
+> **Conditional section.** Only relevant if **`TD-08 = B` (strangler-fig with feature flags)** in `TARGET.md`. With TD-08=A (big-bang side-by-side, default), cutover is one event after final verification — `Seq` alone defines port order and there is no per-module rollout order to plan. Delete this section if TD-08=A.
 
-| Wave | Modules | Cutover rationale |
-|------|---------|-------------------|
+> When TD-08=B: separates **rollout strategy** (which modules' flags flip together, in what risk order) from `Seq` (port order). A module ported early (low `Seq`) can still flip late (high wave) — e.g., `auth` typically has a low `Seq` because many modules depend on its code, but flips in the last wave because production auth is the highest blast radius.
+
+| Wave | Modules | Cutover rationale (flag-flip risk) |
+|------|---------|-----------------------------------|
 | 0 — Setup | `foundation` | Skeleton, observability — foundational for everything else |
-| 1 — Read-only | `dashboard`, `analytics` | No writes; rollback is trivial |
+| 1 — Read-only | `dashboard`, `analytics` | No writes; rollback is trivial (flip flag back) |
 | 2 — Simple CRUD | `products`, `customers`, `suppliers` | Isolated writes, simple rules |
 | 3 — CRUD with side effects | `appointments`, `commissions` | Writes that trigger external sync |
 | 4 — Transactional | `sales`, `payables`, `receivables` | Multi-table writes, business rules core |
@@ -48,8 +50,6 @@ Risk: low (read-only / isolated), medium (writes + side effects), high (transact
 | 6 — AI / streaming | `chat`, `agents` | Stateful, streaming, cost-sensitive |
 | 7 — Admin | `admin` | Low traffic, can wait |
 | 8 — Auth | `auth` | Highest blast radius — last to flip in production |
-
-> Note: a module ported early (low `Seq`) can still cut over late (high wave). E.g., `auth` typically has a low `Seq` because many modules depend on its code, but cuts over in wave 8 because flipping production auth is the riskiest deployment.
 
 ## Open questions
 

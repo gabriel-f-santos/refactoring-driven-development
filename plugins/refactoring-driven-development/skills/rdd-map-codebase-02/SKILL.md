@@ -126,7 +126,7 @@ Every module gets a 3-digit zero-padded sequence number (`Seq`) that defines a *
 - Use **sequential numbering**: `001`, `002`, `003`, ..., `099`. Zero-padded to 3 digits. Same convention as Django migrations and similar ordered-list tools — simpler than gap-based numbering, and inserts mid-flight are rare in legacy migrations (the legacy code is fixed; if a missed module surfaces later, re-run `/rdd-map-codebase-02` to renumber, or `git mv` the affected modules in one commit).
 - **Order by dependency (topological), not by wave or risk.** A module's `Seq` must be greater than every `Seq` it depends on. `auth` typically gets a low `Seq` because many modules depend on it; `reports` and `admin` typically get high `Seq` because they read from many modules.
 - **Tiebreak alphabetically** when two modules at the same dependency level could go in either order.
-- **Wave is separate from Seq.** The wave column captures **cutover risk** ("read-only first", "auth last for blast radius") — that's a deployment concern, not a porting-order concern. The user flips feature flags in whatever order makes sense post-port; `Seq` only governs the order in which code gets ported and tests get locked. Don't conflate the two — that's how you end up with cross-wave dependencies that need `.rdd.yml skipped:` workarounds.
+- **Wave is separate from Seq, and only relevant if TD-08=B.** The wave column captures **cutover risk** ("read-only first", "auth last for blast radius") — a deployment concern relevant ONLY when the user chose `TD-08 = B` (strangler-fig with feature flags) in `TARGET.md`. With `TD-08 = A` (big-bang side-by-side, the default), cutover is one event at the end and there is no per-module rollout order to plan — `Seq` alone defines port order. Don't conflate Seq and Wave even when both apply; mixing them produces cross-wave dependencies that need `.rdd.yml skipped:` workarounds.
 - The same `Seq` must not be assigned to two modules.
 
 **Do not create directories in this step.** `Seq` is recorded in `MAP.md` only. Module directories (`{artifacts_dir}/NNN_<module>/`) are created lazily by `/rdd-specify-03` when each module is specced. This keeps the filesystem clean of empty placeholders and lets the user adjust `Seq` in `MAP.md` text before any spec work commits to disk.
@@ -138,7 +138,7 @@ Create `{artifacts_dir}/MAP.md` using the template in `templates/MAP.md`. It mus
 - **Summary** — total entry points, modules identified, estimated calendar effort
 - **Module table** — `Seq`, name, entry-point count, domain summary, complexity (S/M/L/XL), risk (low/med/high), dependencies. **`Seq` is the leftmost column** so the migration order is visually obvious.
 - **Dependency notes** — any cycles, hubs, or surprises
-- **Wave plan (cutover risk)** — separate from `Seq`. Tabulates which modules cut over together based on rollback risk, blast radius, etc. May reference `Seq` ranges but doesn't dictate them.
+- **Wave plan (cutover risk)** — **conditional**. Only include this section if `TD-08 = B` (strangler-fig with feature flags) in `TARGET.md`. With `TD-08 = A` (big-bang side-by-side, default), cutover is one event after final verification — there is no per-wave rollout to plan. When the section IS included, it tabulates which modules' flags flip together based on rollback risk, blast radius, etc.
 - **Open questions** — things you couldn't determine from code alone (ask the user)
 
 ### 8. Hand-off

@@ -465,7 +465,7 @@ Git operations beyond local commits (push, PR) are out of scope — the user own
 - **Don't refactor while porting.** "Improving while you're already there" turns a parity port into a behavior change. Phase 8 stop is non-negotiable.
 - **Don't translate to "idiomatic" early.** Even if legacy is bad, copy shape-by-shape. Clean up after parity is proved.
 - **Don't skip the legacy-side test run** (Phase 3 and step 5.5). Tests never validated against legacy might pass on new for the wrong reason.
-- **Don't merge cutover into the refactor.** This skill produces a parity-correct module behind a feature flag. Flipping the flag is separate.
+- **Don't merge cutover into the refactor.** This skill produces a parity-correct module ready for cutover. The cutover mechanism is per `TD-08` in `TARGET.md` — Option A (big-bang side-by-side) deploys `v2/` wholesale at the end; Option B (strangler-fig) flips a feature flag per module. Either way, this skill stops at "module is parity-correct and tests pass" — flipping or deploying is the user's call.
 - **Don't trust "looks the same" — run the suite.** Tiny differences (rounding, defaults, sort order) bite in production.
 - **Don't reintroduce confirmation prompts.** This skill is autonomous after pre-flight. Hard-fail (pre-flight, fix-loop exhausted, gate blocked) is fine; "Continuar?" is not.
 - **Don't lose count in the fix loop.** 3 attempts means 3 — and the count resets per test, not per phase.

@@ -195,7 +195,7 @@ Run: /rdd-improve-05 <next_module>
 Next steps in the user's hands:
 
 - Re-run `/rdd-improve-05 {module}` later if more refactors are identified
-- Cutover (if not already done) — feature flag flip is owned by the user, outside this pipeline
+- Cutover (if not already done) — owned by the user, per `TD-08` in `TARGET.md`. Option A (big-bang) = deploy `v2/` and replace legacy. Option B (strangler-fig) = flip the feature flag for this module. Outside this pipeline either way.
 
 ---
 

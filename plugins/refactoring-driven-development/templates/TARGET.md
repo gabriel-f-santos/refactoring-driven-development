@@ -104,56 +104,110 @@ Example: "Edge function cold starts are causing 800ms p95 on dashboard endpoints
 
 ### TD-08: Cutover & frontend approach
 
-**Context:** How does production traffic move from legacy to new code, and what happens to the frontend? This decision drives whether `Wave plan` in `MAP.md` is load-bearing or just optional documentation, and whether feature-flag infrastructure is needed at all.
+**Context:** How does production traffic move from legacy to new code, and what happens to the frontend? This decision drives whether `Wave plan` in `MAP.md` is load-bearing or just documentation, whether feature-flag infrastructure is needed, and which "Behavior preservation strategy" layers (see section below) apply.
 
-**Options:**
+**Options:** 3 valid + 1 anti-pattern. **Each option preserves behavior**, but uses a different combination of test layers + rollback mechanism.
 
-#### Option A: Big-bang side-by-side (recommended for AI-era / small teams)
+---
 
-- **Layout:**
-  ```
-  src/                       # legacy frontend, INTOCADO até cutover
-  legacy-backend/            # legacy backend, INTOCADO até cutover (e.g., supabase/functions/)
-  v2/
-  ├── backend/               # novo backend
-  └── frontend/              # FRESH-START — nasce chamando v2/backend, NÃO é cópia de src/
-  ```
-- **`v2/frontend/` é fresh-start.** Cada página/componente nasce já calling o backend novo. Pode reaproveitar componentes/utilitários do `src/` (importar com cuidado), mas NÃO é byte-copy do projeto inteiro.
-- **Cutover:** um único deploy do `v2/` (frontend + backend). Domínio público aponta pro novo. `src/` e legacy-backend são deletados depois de estabilizar.
-- **Feature flags:** nenhuma necessária.
-- **Rollback:** redeploy da tag anterior (frontend + backend juntos).
-- **Pros:** código limpo desde o nascimento, sem dívida importada do legado; agente IA porta backend + escreve frontend novo numa janela curta; deploy é evento único e simples; nada de infraestrutura de flags pra manter ou aposentar depois.
-- **Cons:** all-or-nothing — quando o flip acontece, todo o tráfego vai pro `v2/`. Blast radius alto se algum bug escapou (mitigado por testes de paridade no port).
-- **Best for:** equipes pequenas (2–5), agente IA conduzindo o port (horas a poucos dias), ambientes com janela de deploy controlada.
+#### Option A.1: Big-bang side-by-side, fresh-start `v2/frontend/`
 
-#### Option B: Strangler-fig com feature flags (1 frontend só)
+**Layout:**
+```
+src/                  # legacy frontend, untouched until cutover
+legacy-backend/       # legacy backend, untouched until cutover
+v2/
+├── backend/          # new backend (parity-correct via /rdd-refactor-04)
+└── frontend/         # FRESH-START — pages written from scratch
+                      # each page calls /api/v2/* from line 1
+                      # selectively reuses utils/components from src/, NEVER byte-copies the project
+```
 
-- **Layout:**
-  ```
-  src/                       # frontend ÚNICO; ganha flags/gateway routing por rota
-  legacy-backend/            # encolhe módulo a módulo conforme cutover
-  v2/backend/                # cresce módulo a módulo conforme cutover
-  # NÃO existe v2/frontend/. Frontend permanece único em src/.
-  ```
-- **Frontend nunca é duplicado.** Só o código de chamada em `src/` é atualizado pra calling `v2/backend` em vez do legacy, atrás de uma flag.
-- **Cutover:** flag flip per-rota / per-feature. Cada módulo vai pro `v2/backend` quando sua flag flipa.
-- **Feature flags:** sim, com infra dedicada (LaunchDarkly, Unleash, ou caseiro).
-- **Pros:** rollback per-feature instantâneo (flip a flag de volta); migração gradual; blast radius pequeno por evento de cutover; testa em produção com tráfego real antes de 100%.
-- **Cons:** infra de flag pra montar e manter; ambos legacy e novo backend precisam rodar em paralelo durante toda a migração; janela longa de "duas verdades"; flag debt pra limpar depois.
-- **Best for:** equipes maiores, alto tráfego de produção, ambientes regulados onde rollback per-feature é requisito.
+**Cutover:** single deploy of `v2/`; domain points to new; `src/` + legacy-backend deleted after stabilization.
 
-#### Anti-pattern: C — Cópia do frontend + refactor (`v2/frontend/` clonando `src/`)
+**Behavior preservation:**
 
-**Não use.** Combina os custos de A e B sem nenhum dos benefícios:
+| Layer | Coverage | Cost |
+|-------|----------|------|
+| 1. Backend BRs (auto via `/rdd-refactor-04`) | Same business rule in both backends | Included |
+| 2. DTO contract (TS types) | Frontend receives expected shape | Zero |
+| 3. Smoke E2E dual-target | End-to-end behavior equivalent on both stacks | Medium |
+| 4. **Visual regression (required)** | Catches subtle UX drift since UI was rewritten from scratch | High |
 
-- Você duplica o frontend (custo de manter duas árvores divergindo) — mas esse custo só faria sentido se fosse fresh-start (A).
-- Você não tem flag dinâmica fazendo nada útil — o request que entra em `v2/frontend/` já tá no caminho novo, então a flag não tem o que decidir.
-- A migração vira "trocar Supabase calls por NestJS calls módulo a módulo dentro do clone", o que é o trabalho de B só que duplicado em dois frontends que vão divergir com bugs/UX/visual com o tempo.
-- No cutover você fica entre `git mv v2/frontend/* src/` (e o porquê de ter copiado?) ou subir `v2/frontend/` no domínio (= big-bang com etapas extras desnecessárias).
+**Rollback in production:** redeploy previous tag (frontend + backend).
 
-Se você se pegar fazendo C, **escolha A ou B e ataque conscientemente**.
+**Best for:** small frontend; team willing to invest in modernizing UI; willing to pay visual-regression cost.
 
-**Recommendation:** Option A para migrações na era IA (equipe pequena + agente fazendo o port). Option B para produção de alto tráfego onde rollback per-feature é requisito explícito. C é anti-pattern.
+---
+
+#### Option A.2: Big-bang side-by-side, copy-and-refactor `v2/frontend/`
+
+**Layout:**
+```
+src/                  # legacy frontend, untouched until cutover
+legacy-backend/       # legacy backend, untouched until cutover
+v2/
+├── backend/          # new backend (parity-correct via /rdd-refactor-04)
+└── frontend/         # initialized as `cp -r src/ v2/frontend/`
+                      # then refactored module-by-module:
+                      # supabase.invoke('reports') → fetch('/api/v2/reports')
+                      # UI is byte-identical to src/ by construction
+```
+
+**Cutover:** same as A.1 — single deploy of `v2/`; domain points to new; `src/` + legacy-backend deleted.
+
+**Behavior preservation:**
+
+| Layer | Coverage | Cost |
+|-------|----------|------|
+| 1. Backend BRs (auto via `/rdd-refactor-04`) | Same business rule in both backends | Included |
+| 2. DTO contract (TS types) | Frontend receives expected shape | Zero |
+| 3. Smoke E2E dual-target | End-to-end behavior equivalent on both stacks | Medium |
+| 4. Visual regression | Redundant — UI is byte-identical by construction | **Skip** |
+
+**Rollback in production:** redeploy previous tag.
+
+**Best for:** large frontend with non-trivial UX; want to preserve pixel-perfect behavior; OK with importing legacy tech debt (cleaned up later via `/rdd-improve-05`).
+
+---
+
+#### Option B: Strangler-fig with feature flags (RECOMMENDED for safety)
+
+**Layout:**
+```
+src/                  # SINGLE frontend; gains feature-flag routing per route
+legacy-backend/       # shrinks module-by-module as cutover progresses
+v2/backend/           # grows module-by-module as cutover progresses
+                      # NO v2/frontend/ — frontend stays as src/
+```
+
+**Cutover:** per-module flag flip, gradual. `MAP.md`'s Wave plan defines flip order (lower-risk modules flip first; auth flips last).
+
+**Behavior preservation:**
+
+| Layer | Coverage | Cost |
+|-------|----------|------|
+| 1. Backend BRs (auto via `/rdd-refactor-04`) | Same business rule in both backends, **per module** | Included |
+| 2. DTO contract (TS types) | Frontend receives expected shape, per module | Zero |
+| 3. E2E per-module dual-target | Each module's flag tested in both states (on/off) before flip | Medium |
+| 4. Visual regression | Not applicable — frontend is the same code in both flag states | Skip |
+| 5. **Per-feature rollback in production** | Flag flip-back if regression escapes tests | Built-in (free with flag infra) |
+
+**Rollback in production:** flag flip-back — instantaneous, no redeploy.
+
+**Best for:** any production system where instant rollback per-feature matters more than infra simplicity. **This is the safest option** because the test suite is augmented with **real production traffic per module**, gated by a flag that can be flipped back if any unexpected behavior emerges.
+
+---
+
+#### Anti-pattern D: Flag inside the cloned frontend
+
+**Do not use.** Means `v2/frontend/` is a copy of `src/` AND has a feature flag inside `v2/frontend/` deciding legacy-backend vs new-backend. Inert because the request already passed the "which frontend to serve" decision before reaching the flag — flipping it doesn't roll back anything meaningful (you can't fall back to `src/` from within `v2/frontend/`).
+
+If you find yourself drifting toward D, **pick A.1, A.2, or B explicitly** and reframe.
+
+---
+
+**Recommendation:** **Option B (strangler-fig)** — provides the strongest in-production safety net via per-feature rollback. After each module's `/rdd-refactor-04` completes, flipping the flag exposes the new backend to real production traffic for that module only; if unexpected behavior emerges, the flag flips back instantly with no redeploy. A.1 and A.2 are valid alternatives when flag infrastructure isn't justified (small team, low-traffic, controlled deploy windows, AI-era hours-to-days migration); they preserve behavior via tests but rollback in production is "redeploy previous tag" (slower, riskier than a flag flip).
 
 **Decision:** _<to be filled by user>_
 
@@ -192,6 +246,32 @@ Se você se pegar fazendo C, **escolha A ou B e ataque conscientemente**.
 
 ---
 
+## Behavior preservation strategy
+
+> **The pipeline guarantees the migration preserves behavior.** This section documents the layered toolkit — TD-08 picks which layers apply for the chosen cutover approach. This is what you tell stakeholders when asked "how do you ensure the rewrite doesn't break things?"
+
+### The five layers
+
+| # | Layer | What it catches | Cost | When it applies |
+|---|-------|-----------------|------|-----------------|
+| 1 | **Backend BR parity tests** (auto via `/rdd-refactor-04`) | Business-rule divergence between legacy and new backend (different responses, different errors, different side effects) | Already included in `/rdd-refactor-04` (lock_legacy + per-EP parity check) | **Always.** Foundation of every option. |
+| 2 | **DTO contract** (TS types / zod schemas) | Frontend receiving a shape it doesn't expect | Zero (uses existing TS) | **Always** when frontend is TS. Static + runtime. |
+| 3 | **Smoke E2E dual-target** (Cypress / Playwright) | End-to-end behavior divergence; full user flows | Medium — write 5–10 critical-path specs once, run on both stacks | **Always** before cutover. |
+| 4 | **Visual regression** (Percy, Chromatic, Playwright snapshots) | Subtle UI drift (pixels, layouts, spacing) | High — baselines + tooling | Only if frontend was rewritten (TD-08 = A.1). Skip for A.2 (byte-copy) and B (single frontend). |
+| 5 | **Per-feature rollback in production** (feature-flag flip) | Behavior bugs that escaped tests, caught by real-traffic monitoring | Built-in to the strangler-fig infra (TD-08 = B) | Only for TD-08 = B. |
+
+### Per TD-08 option, the layers that apply
+
+| TD-08 choice | Layer 1 | Layer 2 | Layer 3 | Layer 4 | Layer 5 |
+|--------------|--------|--------|--------|--------|--------|
+| A.1 fresh-start | ✅ | ✅ | ✅ | ✅ required | — |
+| A.2 cópia | ✅ | ✅ | ✅ | skip (redundant) | — |
+| B strangler-fig | ✅ per-module | ✅ per-module | ✅ per-module | skip | ✅ per-feature |
+
+**The user-visible promise** (what to tell stakeholders): *"For every business rule, we lock legacy behavior in a test, port the code, and re-run the same test against the new code. Tests pass on both before any production change. Frontend contracts are typed end-to-end; UI flows are validated by E2E on both stacks before cutover. Rollback mechanism is [redeploy previous tag | feature-flag flip] depending on the chosen cutover strategy."*
+
+---
+
 ## Out of scope
 
 Decisions explicitly deferred:
@@ -221,7 +301,7 @@ Decisions explicitly deferred:
 | TD-05 | Auth strategy | Phase 1 keep Supabase, Phase 2 Better Auth | _<pending>_ |
 | TD-06 | Hosting | Railway | _<pending>_ |
 | TD-07 | Test framework | Vitest + testcontainers | _<pending>_ |
-| TD-08 | Cutover & frontend approach | A (big-bang side-by-side, fresh-start `v2/frontend/`) | _<pending>_ |
+| TD-08 | Cutover & frontend approach | B (strangler-fig with feature flags) for production safety; A.1/A.2 valid when flag infra isn't justified | _<pending>_ |
 
 ---
 

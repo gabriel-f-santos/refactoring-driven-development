@@ -322,73 +322,132 @@ Tests against the new target should fail cleanly.
 
 Commit. Update `PROGRESS.md`: pipeline `scaffold` row → `✅ completed`; append history line. Initialize the Tasks table in `PROGRESS.md` with one row per entry point from `spec/SPEC.md`'s API surface (status `⬜ pending`, file `tasks/NN_<name>.md` not yet created). Proceed directly to Phase 5.
 
-### Phase 5 — Port (per-task loop)
+### Phase 5 — Port (per-task loop with subagent dispatch)
 
-For each entry point in order (read from `spec/SPEC.md` API surface), execute these steps. **Do not batch.** Each entry point is one task — one file under `tasks/`, one TaskCreate row, one commit when complete.
+**Default mode:** the main agent dispatches **one general-purpose subagent per entry point** sequentially. Same context-engineering pattern used by `/rdd-specify-03` batch mode — keeps the main agent's context bounded across long modules (10+ EPs of 500–1000 LOC each) so the work finishes without needing to `/clear` mid-flight.
 
-The first time the loop runs, set the pipeline `port` row in `PROGRESS.md` to `🔄 in_progress` with detail `0/Total tasks done`. Update the row after each task completes.
+The main agent's job in Phase 5 is to **dispatch, parse, and track**. The subagent's job is to **read, port, test, and report**. The contract between them is a single-line summary returned per EP.
 
-#### Step 5.1 — Open the task
+The first time the loop runs, set the pipeline `port` row in `PROGRESS.md` to `🔄 in_progress` with detail `0/Total tasks done`. Update the row after each task completes (or fails).
 
-Create `{module_dir}/tasks/NN_<entry-point-name>.md` from `templates/task.md` if it doesn't exist (resume case: file may already exist from a prior session — re-open it with `Status: in_progress`). `NN` is the 2-digit zero-padded position from the API-surface order in `SPEC.md` (`01`, `02`, ..., `99`).
+#### Step 5.1 — Pick the next pending task
 
-Re-read the entry point's section in `spec/SPEC.md` and the corresponding tests in `spec/TESTS.md`. Internal checklist: one item per BR + one per side effect + "run tests on new". Fill in the `Spec slice` section of the task file (API surface, BRs covered, error codes, side effects). Mark this task's `TaskCreate` entry `in_progress`. Update `PROGRESS.md`'s tasks table row to `🔄 in_progress`.
+Read `PROGRESS.md`'s Tasks table. Find the next row with `Status: ⬜ pending` (or `🔄 in_progress` from a prior session that died mid-EP — treat as the resume target). If none → all tasks complete, proceed to Phase 6.
 
-#### Step 5.2 — Port the logic (parity-first)
+#### Step 5.2 — Open the task file
 
-- **Copy the structure** from legacy, adapting only for syntax differences (Deno → Node, JS → TS, framework idioms required to compile)
-- **Keep the same control flow.** Same `if` order, same early returns, same error responses. Even if it looks ugly.
-- **Keep the same DB queries.** Translate 1:1, not "the way the new ORM prefers"
-- **Keep the same field names** in responses
-- **Keep bugs that callers depend on** (`legacy bug, intentional parity`)
+Create `{module_dir}/tasks/<NN>_<entry-point-name>.md` from `templates/task.md` if it doesn't exist. `NN` is the 2-digit zero-padded position from the API-surface order in `spec/SPEC.md` (`01`, `02`, ..., `99`).
 
-Stay in scope: only files required by **this entry point**. Unrelated issues → record in this task file's `Observations` section. **Do not act on them.** If reading legacy reveals a bug or quirk worth flagging for `/rdd-improve-05`, append it to `spec/SPEC.md` "Improvement candidates" (class + risk note) and continue porting verbatim — the port honors legacy, the candidate is the record for later.
+Mark this task's `TaskCreate` entry `in_progress`. Update the row in `PROGRESS.md` Tasks table to `🔄 in_progress`.
 
-#### Step 5.3 — Run only this task's tests against new
+#### Step 5.3 — Dispatch one general-purpose subagent
+
+The subagent has no prior conversation context — its prompt must be fully self-contained. Use this template (substituting `<module_name>`, `<seq>`, `<NN>`, `<ep_name>`, source paths, and target paths from MAP/SPEC/scaffold):
 
 ```
-TEST_TARGET=new <test-command for this entry point's tests>
+You are running step "port one entry point" as part of an RDD refactor autopilot. The main agent has dispatched you with a self-contained prompt — you have no prior conversation context.
+
+Module: <module_name>
+Sequence number (Seq): <seq>
+Module directory: <artifacts_dir>/<seq>_<module_name>/
+Entry point: <ep_name>
+Position: <NN> of <Total>
+Task file: <module_dir>/tasks/<NN>_<ep_name>.md
+
+Read first (in this order):
+1. <artifacts_dir>/TARGET.md — chosen conventions, error format, multi-tenancy boundary
+2. <module_dir>/spec/SPEC.md — find the API-surface row for <ep_name>; capture its BR slice, error codes, side effects
+3. <module_dir>/spec/TESTS.md — find the tests planned for <ep_name>
+4. <legacy_source>/<ep_legacy_path> — the legacy implementation to port
+5. <target_source>/<scaffolded_stub_path> — the 501-stub created in Phase 4
+
+Then port (parity-first):
+- Fill the task file's "Spec slice" section (API surface, BRs covered, error codes, side effects)
+- Port controller + service + DTO + any helpers required, mirroring legacy structure:
+  - Copy legacy control flow (same if order, same early returns, same error responses, even if ugly)
+  - Translate DB queries 1:1 (not "the way the new ORM prefers")
+  - Preserve field names in responses
+  - Preserve bugs that callers depend on; mark with `(legacy bug, intentional parity)` in BR comment
+- Stay in scope: only files required by THIS entry point. Unrelated issues → record under this task's "Observations" section, do NOT act on them.
+
+Run tests on new:
+  TEST_TARGET=new <test-command for this EP's tests only — not the full suite>
+
+Fix loop (max 3 attempts on same failing test):
+- Read failure, diagnose root cause, apply focused fix, re-run THE SAME tests
+- Each attempt: append one line under "Fix-loop attempts" in the task file (failure summary + diagnosis + fix)
+- Never weaken tests (.skip, .only, xit, swallow errors)
+- If failure points to a previously-completed EP → STOP and return FAILED (regression in committed code, main agent escalates)
+- After 3 unsuccessful attempts → STOP, set task file Status: failed, return FAILED summary
+
+Parity check against legacy:
+  TEST_TARGET=legacy <test-command for this EP's tests>
+  - Both must be green
+  - If new green but legacy red: you fixed a legacy bug. REVERT your deviation in the new code, note in task file Observations, re-run
+  - If both red on same test: adjust the test or update spec/SPEC.md BR to match what legacy actually does (parity); re-run
+
+Improvement candidates (bugs / quirks / code smells found while reading legacy):
+- Append entries to <module_dir>/spec/SPEC.md "Improvement candidates" table with class (`bug`/`quirk`/`code-smell`/`design`) + risk-if-changed note
+- Do NOT change the BR — parity stays. The candidate is parallel documentation for /rdd-improve-05.
+
+Finalize the task file:
+- Status: completed
+- Tests on new: X/Y, Tests on legacy: X/Y
+- Source / Target file paths
+- Completed timestamp
+- Observations (out-of-scope findings, reverts, etc.)
+
+Commit your work as a single commit scoped to this EP.
+
+Forbidden:
+- Do NOT use AskUserQuestion. This skill is autonomous — every decision uses the parity-first default.
+- Do NOT modify another module's files (any other <NNN>_<module>/ directory).
+- Do NOT modify TARGET.md, MAP.md, .rdd.yml, BATCH_SPEC.progress.md.
+- Do NOT modify the upstream gate or `.rdd.yml` `skipped:` list.
+- Do NOT spawn nested subagents. Delegation tree stays flat: main → 1 subagent per EP → no deeper.
+- Do NOT push to remote.
+- Do NOT continue to a different EP if this one fails — return FAILED summary.
+
+Return as your final message a single one-line summary in this exact format:
+Ported <ep_name> (<NN>/<Total>). Tests: X/Y on new, X/Y on legacy.
+
+If you fail (legacy unreadable, ambiguity, fix-loop exhausted, regression in another EP), return instead:
+FAILED — <ep_name>: <one-line reason>
 ```
 
-Not the full suite. Save that for final verification.
+#### Step 5.4 — Wait for the subagent to return
 
-#### Step 5.4 — Fix loop (max 3 attempts)
+Do not dispatch the next EP until this one returns. The subagent owns the port + tests + fix-loop + commit; the main agent only tracks state.
 
-If green, proceed to step 5.5.
+#### Step 5.5 — Parse the summary and update state
 
-If red, enter the fix loop. Read failure output, diagnose root cause, apply focused fix, re-run **the same tests**. Maximum **3 attempts**. Count deliberately. Each attempt appends a one-line entry under `Fix-loop attempts` in this task file (with the failure summary, root-cause hypothesis, and what you changed).
+Read the subagent's one-line summary:
 
-**Discipline:**
-- **Read the error.** Same fix applied twice = wrong diagnosis.
-- **Fix the root cause.** Don't weaken tests. Don't add `.skip`, `.only`, `xit`. Don't catch and swallow errors.
-- **Stay in scope.** Failure pointing to a previously-completed task → **stop**, escalate (regression in committed code).
-- **No shortcuts.** Never disable hooks. Never bypass safety checks.
+- **On success** (`Ported <name> (<NN>/<Total>)...`):
+  - Update the matching row in `PROGRESS.md` Tasks table → `✅ completed`
+  - Increment the pipeline `port` row's detail (`X/Y tasks done`)
+  - `TaskUpdate` this entry to `completed`
+  - Briefly emit progress to chat (one line, exactly what the subagent returned)
 
-After 3 unsuccessful attempts, **stop**. Update the task file's status to `failed`, mirror to `PROGRESS.md` tasks table, then report: the entry point name (not `EP-N`), concise failure output, root-cause hypothesis, attempts made. Wait for user.
+- **On failure** (`FAILED — <name>: <reason>`):
+  - Update the matching row in `PROGRESS.md` Tasks table → `❌ failed`
+  - `TaskUpdate` this entry to `in_progress` (kept open for resumption)
+  - Emit the failure to chat with the reason
+  - **STOP the loop.** A failed EP is a hard fail — the user reviews and decides next steps (retry the EP after fixing the cause, adjust SPEC, or mark this EP `skipped:` in `.rdd.yml` and re-run).
 
-#### Step 5.5 — Run the same tests against legacy (parity check)
+#### Step 5.6 — Continue to the next pending task
 
-```
-TEST_TARGET=legacy <test-command for this EP's tests>
-```
+If the loop is still running (no failure) and more pending tasks exist, return to step 5.1. **Do not ask the user to confirm between tasks.** The user opted into the autopilot when invoking `/rdd-refactor-04` — the only stops are hard fails.
 
-Both must be green. If a test passes on `new` but fails on `legacy`, you accidentally fixed a legacy bug. **Default: revert** the deviation in the new code so behavior matches legacy (parity-first). Note the revert in this task file's `Observations` section so the user can review if they want to deliberately deviate later. Do not stop to ask — parity is the rule, deviations are an explicit user decision recorded in `spec/SPEC.md` under "Intentional deviations from legacy".
+When the last pending task completes, set pipeline `port` row in `PROGRESS.md` to `✅ completed`, append a history line `port phase complete: X/Y tasks ported`, and proceed to Phase 6.
 
-If both targets fail the same test (test asserts behavior neither implements), apply the lock_legacy resolution rules: adjust the test or update `spec/SPEC.md` to match the actual legacy behavior, then re-run.
+#### Why subagent dispatch (context engineering)
 
-#### Step 5.6 — Close the task and continue
-
-Finalize the task file: set `Status: completed`, record final test counts (new + legacy), `Completed:` timestamp, observations. Mirror the row in `PROGRESS.md`'s tasks table to `✅ completed`. Increment the pipeline `port` row's detail (`X/Y tasks done`). `TaskUpdate` this entry to `completed`.
-
-Print one progress line using the **entry point's real name** and **proceed directly to step 5.1 of the next task**:
-
-```
-Ported <entry-point-name> (N/Total). Tests: X/Y on new, X/Y on legacy.
-```
-
-Example: `Ported agent-relatorios (1/5). Tests: 12/12 on new, 12/12 on legacy.`
-
-When the last task is done, set pipeline `port` row in `PROGRESS.md` to `✅ completed`, append a history line, and proceed to Phase 6.
+- **Main agent context stays bounded** — across N EPs, main agent only accumulates: PROGRESS.md state, MAP.md (cached), TARGET.md (cached), SPEC.md (cached), and one-line summary per EP. That's a few KB of growth per EP, not 30–50k tokens (which is what inline per-EP would cost: re-read legacy + write controller/service/spec + fix-loop iterations).
+- **Each subagent has fresh context** — no contamination from sibling EPs; no risk that "I already saw similar code" leads to false-pattern porting. Prompt caching warms TARGET/SPEC/TESTS, so cost per EP is predictable.
+- **Failures are isolated** — EP-N failing doesn't pollute the next dispatch's context. Retry is just re-dispatch.
+- **Resumability** — `PROGRESS.md` is updated after each subagent return. A session that dies mid-flight resumes on next invocation from the next pending task (Phase 0 resume check finds it).
+- **Inline option** (rare): for very small EPs (<100 LOC legacy, <5 planned tests) where dispatch overhead might outweigh benefit, the main agent **may** port inline. Use sparingly — the rule of thumb is "if in doubt, dispatch". Mixed inline/dispatch within one module is fine as long as `PROGRESS.md` Tasks table reflects each task's final state.
 
 ### Phase 6 — Verify side effects
 
@@ -477,6 +536,11 @@ Git operations beyond local commits (push, PR) are out of scope — the user own
 
 ---
 
-## When to spawn sub-agents
+## Sub-agent dispatch summary
 
-For long porting tasks (>1000 lines per EP), spawn the appropriate code-writing agent for the target stack with explicit instructions: "parity-first, copy structure, do not refactor". Pass it the legacy file + spec section. **Verify against the test suite** before accepting. Do not delegate the fix loop — run that yourself with full context.
+Phase 5 of this skill **defaults to subagent-per-EP dispatch** (see "Phase 5 — Port" above). The main agent dispatches one general-purpose subagent per entry point, tracking state in `PROGRESS.md` and the Tasks table; the subagent does the read + port + tests + fix-loop + commit and returns a one-line summary.
+
+- **Default:** every EP gets its own subagent. Delegation tree is flat (main → 1 subagent per EP → no deeper).
+- **Inline option** (rare): for very small EPs (<100 LOC legacy, <5 planned tests), main agent may port inline. Mixed inline/dispatch within one module is fine.
+- **Other phases** (Phase 0 preflight, Phase 1 plan_tests, Phase 2 harness, Phase 3 lock_legacy, Phase 4 scaffold, Phase 6 side_effects, Phase 7 final_verification): main agent runs inline. These phases either span the whole module (planning, scaffold) or cross multiple EPs (full-suite verification) — subagent dispatch doesn't fit.
+- **Do not delegate Phase 6/7** — the main agent must see the full suite results to detect cross-EP regressions; a subagent with fresh context wouldn't have that visibility.
